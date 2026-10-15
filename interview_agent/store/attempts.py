@@ -12,18 +12,30 @@ class AttemptRepo:
         self.conn.execute(
             "INSERT INTO attempts(question_id, user_answer, score, feedback)"
             " VALUES (?,?,?,?)", (question_id, user_answer, score, feedback))
+        # State machine computed in Python: plain SQL only. No dialect upsert
+        # (ON CONFLICT / ON DUPLICATE KEY) and no SET right-hand side that
+        # reads a column being updated (MySQL evaluates SET left-to-right,
+        # SQLite against OLD values), so behavior is portable across both.
+        row = self.conn.execute(
+            "SELECT wrong_count, streak_right FROM wrong_notes"
+            " WHERE question_id=?", (question_id,)).fetchone()
         if score < 0.6:
+            if row is None:
+                self.conn.execute(
+                    "INSERT INTO wrong_notes(question_id, wrong_count,"
+                    " streak_right, mastered, last_wrong_at)"
+                    " VALUES (?,1,0,0,datetime('now'))", (question_id,))
+            else:
+                self.conn.execute(
+                    "UPDATE wrong_notes SET wrong_count=?, streak_right=0,"
+                    " mastered=0, last_wrong_at=datetime('now')"
+                    " WHERE question_id=?", (row[0] + 1, question_id))
+        elif row is not None:
+            new_streak = row[1] + 1
             self.conn.execute(
-                "INSERT INTO wrong_notes(question_id, wrong_count, streak_right,"
-                " mastered, last_wrong_at) VALUES (?,1,0,0,datetime('now'))"
-                " ON CONFLICT(question_id) DO UPDATE SET"
-                " wrong_count=wrong_count+1, streak_right=0, mastered=0,"
-                " last_wrong_at=datetime('now')", (question_id,))
-        else:
-            self.conn.execute(
-                "UPDATE wrong_notes SET streak_right=streak_right+1,"
-                " mastered=CASE WHEN streak_right+1>=2 THEN 1 ELSE 0 END"
-                " WHERE question_id=?", (question_id,))
+                "UPDATE wrong_notes SET streak_right=?, mastered=?"
+                " WHERE question_id=?",
+                (new_streak, 1 if new_streak >= 2 else 0, question_id))
         self.conn.commit()
 
     def stats(self, topic: str) -> dict:
