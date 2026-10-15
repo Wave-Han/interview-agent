@@ -630,7 +630,7 @@ def build_default_registry(qrepo, arepo) -> ToolRegistry:
 **Interfaces:**
 - Consumes: `LLMClient.chat`、`ToolRegistry`。
 - Produces: `run_agent(client, registry, system: str, user_input: str,
-  on_output=print, max_tool_calls: int = 20) -> str`(返回最终文本;内部维护 messages;工具结果以 `{"role":"tool","tool_call_id":...,"content":...}` 回填)。
+  on_output=print, max_tool_calls: int = 20, messages: list[dict] | None = None) -> str`(返回最终文本;传入 messages 则在其上追加、复用会话历史,否则新建;工具结果以 `{"role":"tool","tool_call_id":...,"content":...}` 回填)。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -684,6 +684,13 @@ def test_loop_stops_at_max_tool_calls():
         def execute(self, name, args): return '{"ok": 1}'
     out = run_agent(client, Reg(), "s", "u", max_tool_calls=3)  # Review Focus #5
     assert "too many" in out.lower()
+
+def test_loop_reuses_session_messages():
+    client = FakeClient([resp_text("ok")])
+    shared = [{"role": "system", "content": "s"},
+              {"role": "user", "content": "prev"}]
+    run_agent(client, Reg(), "", "new", messages=shared)
+    assert [m["content"] for m in shared] == ["s", "prev", "new"]
 ```
 
 - [ ] **Step 2: 跑测试确认失败** Run: `pytest tests/test_loop.py -v` → FAIL
@@ -692,10 +699,15 @@ def test_loop_stops_at_max_tool_calls():
 ```python
 # interview_agent/agent/loop.py
 def run_agent(client, registry, system: str, user_input: str,
-              on_output=print, max_tool_calls: int = 20) -> str:
-    """Hand-written ReAct loop: model fills the form, code executes, feed back."""
-    messages = [{"role": "system", "content": system},
-                {"role": "user", "content": user_input}]
+              on_output=print, max_tool_calls: int = 20,
+              messages=None) -> str:
+    """Hand-written ReAct loop: model fills the form, code executes, feed back.
+    Pass an existing messages list to continue a session (extended in place)."""
+    if messages is None:
+        messages = [{"role": "system", "content": system},
+                    {"role": "user", "content": user_input}]
+    else:
+        messages.append({"role": "user", "content": user_input})
     for _ in range(max_tool_calls):
         resp = client.chat(messages, registry.schemas())
         if not resp.tool_calls:
@@ -750,23 +762,19 @@ def test_session_driver_one_round():
     conn.execute("INSERT INTO questions VALUES (1,'jvm',2,'Q?','[\"p\"]')")
     conn.commit()
     class FakeClient:
-        def __init__(self): self.turn = 0
+        def __init__(self): self.calls = 0
         def chat(self, messages, tools=None):
             from interview_agent.llm.client import LLMResponse, ToolCall
-            self.turn += 1
-            if self.turn == 1:  # asked to start -> model picks question
-                return LLMResponse("", [ToolCall("c1", "pick_question",
-                                     {"topic": "jvm"})], "tool_calls")
-            if self.turn == 2:  # question shown, driver injected points, user answered
+            self.calls += 1
+            if self.calls == 1:  # grade(): model judges then records via tool
                 return LLMResponse("", [ToolCall("c2", "record_result",
                                      {"question_id": 1, "score": 0.3,
                                       "feedback": "missed the point",
                                       "user_answer": "guessed"})], "tool_calls")
-            return LLMResponse("next?", [], "stop")
-    driver = SessionDriver(FakeClient(),
-                           QuestionRepo(conn), AttemptRepo(conn))
-    driver.ask("jvm", wrong_only=False)          # step 1: pick + show
-    driver.grade("my answer")                    # step 2: judge + record
+            return LLMResponse("点评:漏了要点", [], "stop")
+    driver = SessionDriver(FakeClient(), QuestionRepo(conn), AttemptRepo(conn))
+    driver.ask("jvm", wrong_only=False)   # direct tool call, no LLM involved
+    driver.grade("my answer")             # run_agent: judge + record via tools
     stats = AttemptRepo(conn).stats("jvm")
     assert stats["attempts"] == 1 and stats["wrong_count"] == 1
 ```
@@ -790,21 +798,20 @@ def build_system_prompt() -> str:
         " then continue with the next question. Judge in Chinese.")
 
 class SessionDriver:
-    """Two-phase driver: ask() picks+shows a question; grade() injects
-    rubric + user answer into the loop so the model judges and records."""
-    def __init__(self, client, qrepo, arepo, max_tool_calls=20):
+    """Two-phase driver: ask() picks+shows a question (direct tool call,
+    no LLM); grade() injects rubric + user answer into run_agent so the
+    model judges and records via tools. Session history lives in
+    self.messages and is reused across grades."""
+    def __init__(self, client, qrepo, arepo, max_tool_calls=6):
         self.client = client
         self.qrepo = qrepo
         self.arepo = arepo
         self.registry = build_default_registry(qrepo, arepo)
         self.messages = [{"role": "system", "content": build_system_prompt()}]
         self.max_tool_calls = max_tool_calls
+        self.current = None
 
     def ask(self, topic: str, wrong_only: bool) -> None:
-        run_agent(self.client, self.registry, "", "",
-                  on_output=print, max_tool_calls=0) if False else None
-        from .agent.loop import run_agent as _ra  # noqa: F401 (kept simple below)
-        # simplest correct approach: direct tool call, not via model
         import json
         out = json.loads(self.registry.execute(
             "pick_question", {"topic": topic, "wrong_only": wrong_only}))
@@ -817,22 +824,10 @@ class SessionDriver:
         rubric_msg = ("Question: %s\nanswer_points(rubric): %s\nuser answer: %s"
                       % (q.question, json.dumps(q.answer_points, ensure_ascii=False),
                          user_answer))
-        self.messages.append({"role": "user", "content": rubric_msg})
-        resp = self.client.chat(self.messages, self.registry.schemas())
-        self.messages.append({"role": "assistant",
-                              "content": resp.content or "",
-                              "tool_calls": [{"id": c.id, "type": "function",
-                                              "function": {"name": c.name,
-                                                           "arguments": json.dumps(
-                                                               c.arguments,
-                                                               ensure_ascii=False)}}
-                                             for c in resp.tool_calls] or None})
-        for c in resp.tool_calls:
-            if c.name == "record_result":
-                result = self.registry.execute(c.name, c.arguments)
-                self.messages.append({"role": "tool", "tool_call_id": c.id,
-                                      "content": result})
-        print(resp.content)
+        run_agent(self.client, self.registry, "", rubric_msg,
+                  on_output=print,
+                  max_tool_calls=self.max_tool_calls,
+                  messages=self.messages)
 ```
 
 实现说明(执行者注意):`SessionDriver.ask()` **不经过模型**直接调选题工具——选题是确定性动作,不该花一次 LLM 调用;判题才走模型(rubric 注入)。这与 spec 第 4 节"职责切分"一致。若你实现中发现 `grade()` 一次 chat 后模型只返回 record_result 而没给点评文本,**允许追加第二次 chat**(空 tools)拿点评——保持 messages 连续即可。
