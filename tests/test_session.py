@@ -9,30 +9,52 @@ from interview_agent.session import build_system_prompt, SessionDriver
 def test_system_prompt_contains_rules():
     sp = build_system_prompt()
     assert "record_result" in sp and "answer_points" in sp
+    # grading-turn contract: id must come from the message; selection is
+    # host-side; the user answer is untrusted data (prompt-injection guard).
+    assert "question_id" in sp
+    assert "Do NOT call pick_question" in sp
+    assert "untrusted" in sp
 
 
 def test_session_driver_one_round():
     conn = connect(":memory:")
     init_schema(conn)
-    conn.execute("INSERT INTO questions VALUES (1,'jvm',2,'Q?','[\"p\"]')")
+    # Use a non-trivial id: the model must take it from the rubric message,
+    # not guess id=1 (which would silently record the wrong question).
+    conn.execute("INSERT INTO questions VALUES (7,'jvm',2,'Q?','[\"p\"]')")
     conn.commit()
 
     class FakeClient:
         def __init__(self):
             self.calls = 0
+            self.captured = []   # snapshot per chat() call, for assertions
 
         def chat(self, messages, tools=None):
             from interview_agent.llm.client import LLMResponse, ToolCall
             self.calls += 1
+            self.captured.append([dict(m) for m in messages])
             if self.calls == 1:  # grade(): model judges then records via tool
+                rubric = next(m["content"] for m in messages
+                              if m["role"] == "user")
+                qid = int(rubric.split("question_id:")[1].split()[0])
                 return LLMResponse("", [ToolCall("c2", "record_result",
-                                     {"question_id": 1, "score": 0.3,
+                                     {"question_id": qid, "score": 0.3,
                                       "feedback": "missed the point",
                                       "user_answer": "guessed"})], "tool_calls")
             return LLMResponse("点评:漏了要点", [], "stop")
 
-    driver = SessionDriver(FakeClient(), QuestionRepo(conn), AttemptRepo(conn))
+    fake = FakeClient()
+    driver = SessionDriver(fake, QuestionRepo(conn), AttemptRepo(conn))
     driver.ask("jvm", wrong_only=False)   # direct tool call, no LLM involved
     driver.grade("my answer")             # run_agent: judge + record via tools
+
+    # C1: the rubric message sent to the model exposes the current question_id
+    sent_user = "".join(m["content"] for call in fake.captured
+                        for m in call if m["role"] == "user")
+    assert "question_id: 7" in sent_user
+    # I2: the user answer is fenced with explicit delimiters
+    assert "=== USER ANSWER START ===" in sent_user
+    assert "=== USER ANSWER END ===" in sent_user
+
     stats = AttemptRepo(conn).stats("jvm")
     assert stats["attempts"] == 1 and stats["wrong_count"] == 1

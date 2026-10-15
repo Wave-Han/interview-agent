@@ -26,7 +26,7 @@ AI Agent 驱动的命令行刷题工具:针对 Java 后端 / AI Agent 方向的�
               ┌─────────────▼────────────┐   ┌─────────▼──────────────┐
               │ llm/client.py            │   │ store/  (SQLite)       │
               │ OpenAI 兼容协议           │   │ questions / attempts / │
-              │ httpx + 3 次指数退避重试   │   │ wrong_notes 错题状态机  │
+              │ httpx + 最多 3 次尝试,指数退避 │   │ wrong_notes 错题状态机  │
               └──────────────────────────┘   └────────────────────────┘
 ```
 

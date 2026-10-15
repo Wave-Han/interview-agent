@@ -30,4 +30,7 @@ def run_agent(client, registry, system: str, user_input: str,
             messages.append({"role": "tool", "tool_call_id": c.id,
                              "content": result})
             on_output(f"[tool] {c.name} -> {result[:120]}")
-    return "Stopped: too many tool calls in one session."
+    # Safety valve fired: make it visible to the caller, not just the return value.
+    stop = "Stopped: too many tool calls in one session."
+    on_output(stop)
+    return stop

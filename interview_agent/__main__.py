@@ -8,7 +8,7 @@ from .config import load_config
 from .store.db import connect, init_schema
 from .store.questions import QuestionRepo
 from .store.attempts import AttemptRepo
-from .llm.client import LLMClient
+from .llm.client import LLMClient, LLMConnectionError
 from .session import SessionDriver
 
 
@@ -41,13 +41,24 @@ def main():
             # pick_question returns {"message": ...} instead of a question
             # when nothing is available (parked from T2); exit gracefully.
             if "question_id" not in driver.current:
-                print("当前没有待复习的错题,试试不带 --wrong-only")
+                # Differentiate: wrong-only exhausted vs unknown topic.
+                if args.wrong_only:
+                    print("当前没有待复习的错题,试试不带 --wrong-only")
+                else:
+                    print(f"没有找到 topic '{args.topic}' 的题目,请检查 topic 拼写"
+                          "(jvm/thread_pool/mysql/network/os/redis/netty_algo/agent)")
                 sys.exit(0)
             ans = input("你的回答(回车提交):\n> ")
             driver.grade(ans)
     except (KeyboardInterrupt, EOFError):
         print("\n本次统计:", AttemptRepo(conn).stats(args.topic))
         sys.exit(0)
+    except LLMConnectionError:
+        # Network/API failure mid-session: attempts already recorded via
+        # record_result persist in SQLite, so just report and exit non-zero.
+        print("LLM 连接失败,请检查网络与 .env 配置(已答记录已保存)")
+        print("本次统计:", AttemptRepo(conn).stats(args.topic))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
