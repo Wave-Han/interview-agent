@@ -10,8 +10,9 @@ def _f(name, desc, props, required, handler):
 def build_default_registry(qrepo, arepo) -> ToolRegistry:
     reg = ToolRegistry()
 
-    def pick_question(topic: str, wrong_only: bool = False) -> dict:
-        q = qrepo.pick(topic, wrong_only)
+    def pick_question(topic: str, wrong_only: bool = False,
+                      exclude_ids: list | None = None) -> dict:
+        q = qrepo.pick(topic, wrong_only, exclude_ids=exclude_ids)
         if q is None:
             return {"message": f"no question available for topic '{topic}'"}
         return {"question_id": q.id, "topic": q.topic,
@@ -28,9 +29,14 @@ def build_default_registry(qrepo, arepo) -> ToolRegistry:
     for schema, handler in [
         _f("pick_question", "Pick one interview question. Call at session start and"
            " whenever ready for the next question. Prefer wrong_only when the user"
-           " asks to review mistakes.",
+           " asks to review mistakes. exclude_ids lists questions already asked"
+           " this session; pass it so wrong questions resurface later, not"
+           " immediately.",
            {"topic": {"type": "string"},
-            "wrong_only": {"type": "boolean"}}, ["topic"], pick_question),
+            "wrong_only": {"type": "boolean"},
+            "exclude_ids": {"type": "array",
+                            "items": {"type": "integer"}}},
+           ["topic"], pick_question),
         _f("record_result", "Persist grading of one user answer. score is 0~1"
            " hit-rate of answer points. Call exactly once per answered question.",
            {"question_id": {"type": "integer"}, "score": {"type": "number"},

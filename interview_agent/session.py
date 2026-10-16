@@ -37,11 +37,19 @@ class SessionDriver:
         self.messages = [{"role": "system", "content": build_system_prompt()}]
         self.max_tool_calls = max_tool_calls
         self.current = None
+        self.asked = set()
 
     def ask(self, topic: str, wrong_only: bool) -> None:
         out = json.loads(self.registry.execute(
-            "pick_question", {"topic": topic, "wrong_only": wrong_only}))
-        print(out)
+            "pick_question", {"topic": topic, "wrong_only": wrong_only,
+                              "exclude_ids": sorted(self.asked)}))
+        if "question_id" in out:
+            self.asked.add(out["question_id"])
+            print(f"\n📖 [{out['topic']} · 难度{out['difficulty']}] "
+                  f"题 #{out['question_id']}")
+            print(f"   {out['question']}")
+        # no question: leave current without question_id; the CLI prints
+        # the differentiated hint and exits (double-print avoided here).
         self.current = out
 
     def grade(self, user_answer: str) -> None:
