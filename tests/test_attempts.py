@@ -31,3 +31,10 @@ def test_stats(tmp_path):
     conn = setup_repos(tmp_path, [0.2, 1.0])
     st = AttemptRepo(conn).stats("jvm")
     assert st == {"attempts": 2, "avg_score": 0.6, "wrong_count": 1}
+
+def test_latest_feedback(tmp_path):
+    """Authoritative review comes from DB, not the model's free text."""
+    conn = setup_repos(tmp_path, [0.2, 0.9])
+    from interview_agent.store.attempts import AttemptRepo
+    assert AttemptRepo(conn).latest_feedback(1) == "fb"
+    assert AttemptRepo(conn).latest_feedback(999) is None

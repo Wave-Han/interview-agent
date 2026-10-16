@@ -38,6 +38,14 @@ class AttemptRepo:
                 (new_streak, 1 if new_streak >= 2 else 0, question_id))
         self.conn.commit()
 
+    def latest_feedback(self, question_id: int) -> str | None:
+        """Most recent feedback for a question — the authoritative review
+        (the model's free-form turn output is NOT trusted for display)."""
+        row = self.conn.execute(
+            "SELECT feedback FROM attempts WHERE question_id=?"
+            " ORDER BY id DESC LIMIT 1", (question_id,)).fetchone()
+        return row[0] if row else None
+
     def stats(self, topic: str) -> dict:
         row = self.conn.execute(
             "SELECT COUNT(*), IFNULL(AVG(a.score),0) FROM attempts a"
