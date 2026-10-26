@@ -33,3 +33,18 @@ def test_schemas_shape():
     reg = make_reg()
     names = {t["function"]["name"] for t in reg.schemas()}
     assert names == {"pick_question", "record_result", "get_stats"}
+
+def test_registry_handler_exception_returns_error():
+    reg = make_reg()
+    out = json.loads(reg.execute("get_stats", {"topic": "jvm"}))  # sanity
+    assert "wrong_count" in out
+    # direct raise path: unknown kwargs -> TypeError inside -> error json
+    out = json.loads(reg.execute("pick_question", {"nope": 1}))
+    assert "error" in out
+    # genuine raise inside a handler: FK violation in AttemptRepo.record
+    # (question_id 999 does not exist) must come back as error json
+    out = json.loads(reg.execute("record_result", {"question_id": 999,
+                                                   "score": 0.1,
+                                                   "feedback": "f",
+                                                   "user_answer": "a"}))
+    assert "error" in out
