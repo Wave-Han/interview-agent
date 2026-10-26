@@ -264,33 +264,38 @@ def _q(i, topic="jvm"):  # helper builds Question
 
 def test_run_ask_empty_index_raises():
     class VR:  def count(self): return 0
-    class C:   pass
     with pytest.raises(IndexEmptyError):
-        run_ask(C(), None, None, VR(), "any")
+        run_ask(object(), None, set(), VR(), "any")
 
 def test_run_ask_builds_prompt_with_material():
     class VR:
         def count(self): return 1
         def all(self): return [(7, [1.0, 0.0])]
-    class C:
+    class Cli:
         def __init__(self): self.calls = []
-        def embed(self, texts): self.calls.append(("embed", texts)); return [[1.0, 0.0]]
+        def embed(self, texts):
+            self.calls.append(("embed", texts)); return [[1.0, 0.0]]
         def chat(self, messages, tools=None):
-            self.calls.append(("chat", messages))
             from interview_agent.llm.client import LLMResponse
             return LLMResponse("答案", [], "stop")
     class QR:
         def get(self, i): return _q(i)
-    class AR:
-        def stats(self, t): return {"wrong_count": 0}
-    out = run_ask(C(), QR(), AR(), VR(), "什么是浮动垃圾")
+    cli = Cli()
+    out = run_ask(cli, QR(), set(), VR(), "什么是浮动垃圾")
     assert out == "答案"
-    chat_msgs = [c for n, c in C_calls][0] if False else C_obj.calls[-1][1]
+    assert cli.calls[0] == ("embed", ["什么是浮动垃圾"])
+    msgs = cli.calls[-1][1]
+    assert "题#7" in msgs[1]["content"]
+    assert "候选人问题: 什么是浮动垃圾" in msgs[1]["content"]
+
+def test_pick_recommendation_prefers_wrong():
+    qs = {1: _q(1), 2: _q(2)}
+    class QR:
+        def get(self, i): return qs[i]
+    assert pick_recommendation([2, 1], QR(), wrong_ids={1}).id == 1
+    assert pick_recommendation([2], QR(), wrong_ids=set()).id == 2
+    assert pick_recommendation([], QR(), wrong_ids={1}) is None
 ```
-
-(实现时把最后两行改为先存 client 实例再断言:`cli = C(); run_ask(cli, ...); msgs = cli.calls[-1][1]`;断言 `msgs[1]["content"]` 含 "题#7" 与 "候选人问题"。)
-
-`pick_recommendation` 测试:hit_ids=[1,2],q1 未 mastered 错题 → 返回 q1;均无错题记录 → 返回 q2(第一个 hit);空列表 → None。
 
 - [ ] **Step 2: 确认失败** → FAIL
 - [ ] **Step 3: 实现**(未 mastered 判定:`arepo.stats(q.topic)["wrong_count"]` 不适用单题——直接查:`conn` 不可得,改经 arepo 加一个方法?**No**——让 `pick_recommendation` 接收 `wrong_ids: set[int]` 由调用方(CLI)从 DB 查好传入;测试相应直接传 set。签名修正为 `pick_recommendation(hit_ids, qrepo, wrong_ids: set[int]) -> Question | None`,CLI 侧查询语句在 Task 6 给出:`SELECT question_id FROM wrong_notes WHERE mastered=0`。)
