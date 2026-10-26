@@ -7,12 +7,8 @@ def encode(vec: list[float]) -> bytes:
     return struct.pack("<" + "f" * len(vec), *vec)
 
 def decode(blob: bytes, dim: int) -> list[float]:
-    """Deserialize little-endian float32 bytes back into a list of floats.
-
-    Each component is normalized to float32's ~7 significant decimal digits,
-    so vectors written from plain decimal literals (e.g. 0.1) read back
-    equal to the original input; float32 cannot carry more digits anyway."""
-    return [float(f"{x:.7g}") for x in struct.unpack("<" + "f" * dim, blob)]
+    """Decode a float32 little-endian blob into a plain float list (lossless)."""
+    return list(struct.unpack(f"<{dim}f", blob))
 
 class VectorRepo:
     def __init__(self, conn: sqlite3.Connection):
