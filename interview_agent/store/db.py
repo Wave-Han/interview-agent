@@ -24,6 +24,16 @@ CREATE TABLE IF NOT EXISTS wrong_notes (
   mastered INTEGER DEFAULT 0,
   last_wrong_at TEXT
 );
+CREATE TABLE IF NOT EXISTS question_vectors (
+  question_id INTEGER PRIMARY KEY REFERENCES questions(id),
+  dim INTEGER NOT NULL,
+  vec BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  messages TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 def connect(db_path: str) -> sqlite3.Connection:
