@@ -66,3 +66,12 @@ def test_4xx_no_retry(monkeypatch):
     with pytest.raises(LLMAPIError) as ei:
         LLMClient(CFG).chat([{"role": "user", "content": "x"}])
     assert ei.value.status_code == 401 and calls["n"] == 1
+
+def test_malformed_200_body_wrapped(monkeypatch):
+    # 200 with missing "choices": parsing must not leak a raw KeyError.
+    def fake_post(self, url, **kw):
+        return httpx.Response(200, json={"unexpected": True},
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    with pytest.raises(LLMConnectionError):
+        LLMClient(CFG).chat([{"role": "user", "content": "x"}])

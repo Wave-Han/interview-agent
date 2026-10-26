@@ -8,7 +8,7 @@ from .config import load_config
 from .store.db import connect, init_schema
 from .store.questions import QuestionRepo
 from .store.attempts import AttemptRepo
-from .llm.client import LLMClient, LLMConnectionError
+from .llm.client import LLMClient, LLMConnectionError, LLMAPIError
 from .session import SessionDriver
 
 
@@ -57,6 +57,11 @@ def main():
         # Network/API failure mid-session: attempts already recorded via
         # record_result persist in SQLite, so just report and exit non-zero.
         print("LLM 连接失败,请检查网络与 .env 配置(已答记录已保存)")
+        print("本次统计:", AttemptRepo(conn).stats(args.topic))
+        sys.exit(1)
+    except LLMAPIError as e:
+        # 4xx from the API (bad key etc.): no retry, readable Chinese message.
+        print(f"LLM 接口错误(状态码 {e.status_code}),请检查 .env 配置(已答记录已保存)")
         print("本次统计:", AttemptRepo(conn).stats(args.topic))
         sys.exit(1)
 

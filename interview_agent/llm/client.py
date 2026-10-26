@@ -69,19 +69,26 @@ class LLMClient:
         if tools:
             body["tools"] = tools
         payload = self._post("/chat/completions", body)
-        msg = payload["choices"][0]
-        calls = [ToolCall(tc["id"], tc["function"]["name"],
-                          json.loads(tc["function"]["arguments"] or "{}"))
-                 for tc in msg["message"].get("tool_calls") or []]
-        return LLMResponse(msg["message"].get("content") or "",
-                           calls, msg.get("finish_reason", "stop"))
+        try:
+            msg = payload["choices"][0]
+            calls = [ToolCall(tc["id"], tc["function"]["name"],
+                              json.loads(tc["function"]["arguments"] or "{}"))
+                     for tc in msg["message"].get("tool_calls") or []]
+            return LLMResponse(msg["message"].get("content") or "",
+                               calls, msg.get("finish_reason", "stop"))
+        except KeyError as e:
+            raise LLMConnectionError(f"malformed response: missing {e}") from e
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed texts; returned vectors ordered to match the input list."""
         payload = self._post("/embeddings",
                              {"model": self.cfg.embedding_model, "input": texts})
-        data = payload["data"]
-        if len(data) != len(texts):
-            raise ValueError(
-                f"embedding count mismatch: sent {len(texts)}, got {len(data)}")
-        return [item["embedding"] for item in sorted(data, key=lambda d: d["index"])]
+        try:
+            data = payload["data"]
+            if len(data) != len(texts):
+                raise ValueError(
+                    f"embedding count mismatch: sent {len(texts)}, got {len(data)}")
+            return [item["embedding"]
+                    for item in sorted(data, key=lambda d: d["index"])]
+        except KeyError as e:
+            raise LLMConnectionError(f"malformed response: missing {e}") from e
