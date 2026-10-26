@@ -30,3 +30,39 @@ def test_retry_then_fail(monkeypatch):
     with pytest.raises(LLMConnectionError):
         LLMClient(CFG).chat([{"role": "user", "content": "hi"}])
     assert calls["n"] == 3   # 1 + 2 retries
+
+def test_embed_parses_and_orders(monkeypatch):
+    import httpx
+    from interview_agent.llm.client import LLMClient
+    def fake_post(self, url, **kw):
+        assert url.endswith("/embeddings") and kw["json"]["input"] == ["b", "a"]
+        return httpx.Response(200, json={"data": [
+            {"index": 1, "embedding": [0.2]}, {"index": 0, "embedding": [0.1]}]},
+            request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    out = LLMClient(CFG).embed(["b", "a"])
+    assert out == [[0.1], [0.2]]      # sorted by index
+
+def test_embed_count_mismatch_raises(monkeypatch):
+    import httpx, pytest
+    from interview_agent.llm.client import LLMClient, LLMResponse
+    def fake_post(self, url, **kw):
+        return httpx.Response(200, json={"data": [
+            {"index": 0, "embedding": [0.1]}]}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    with pytest.raises(ValueError):   # Review Focus #5
+        LLMClient(CFG).embed(["a", "b"])
+
+def test_4xx_no_retry(monkeypatch):
+    import httpx, pytest
+    from interview_agent.llm.client import LLMClient, LLMAPIError
+    calls = {"n": 0}
+    def fake_post(self, url, **kw):
+        calls["n"] += 1
+        r = httpx.Response(401, json={"error": "bad key"})
+        r.request = httpx.Request("POST", url)
+        return r
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    with pytest.raises(LLMAPIError) as ei:
+        LLMClient(CFG).chat([{"role": "user", "content": "x"}])
+    assert ei.value.status_code == 401 and calls["n"] == 1
