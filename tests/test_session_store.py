@@ -42,3 +42,22 @@ def test_sqlite_expires_old_sessions():
     conn.commit()
     SqliteSessionStore(conn)                      # constructor purges
     assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+
+def test_factory_import_error_degrades_with_notice(monkeypatch, capsys):
+    # redis package missing (import guard) + configured url -> sqlite + printed notice
+    import interview_agent.session_store as ss
+    conn = connect(":memory:"); init_schema(conn)
+    monkeypatch.setattr(ss, "redis", None)
+    cfg = Config("u", "k", "m", ":memory:", redis_url="redis://x",
+                 embedding_model="e")
+    store, backend = make_session_store(cfg, conn)
+    assert backend == "sqlite" and isinstance(store, SqliteSessionStore)
+    assert "Redis" in capsys.readouterr().out
+
+def test_factory_empty_string_degrades_silently(capsys):
+    # blank REDIS_URL behaves as unconfigured: sqlite, no notice
+    conn = connect(":memory:"); init_schema(conn)
+    cfg = Config("u", "k", "m", ":memory:", redis_url="", embedding_model="e")
+    store, backend = make_session_store(cfg, conn)
+    assert backend == "sqlite" and isinstance(store, SqliteSessionStore)
+    assert capsys.readouterr().out == ""
