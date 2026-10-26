@@ -90,6 +90,15 @@ def main():
         except IndexEmptyError:
             print("向量索引为空,请先运行: python -m interview_agent index")
             sys.exit(0)
+        except LLMAPIError as e:
+            # 4xx from the API: quiz-style Chinese message; no stats print
+            # because ask has no topic context.
+            print(f"LLM 接口错误(状态码 {e.status_code}),请检查 .env 配置")
+            sys.exit(1)
+        except LLMConnectionError:
+            # Network failure: mirror the quiz branch message.
+            print("LLM 连接失败,请检查网络与 .env 配置")
+            sys.exit(1)
         print(answer)
         return
 
