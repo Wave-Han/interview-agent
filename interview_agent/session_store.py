@@ -4,7 +4,7 @@
 import json
 from typing import Protocol
 
-# redis is an optional dependency (not on the whitelist): importing it must
+# redis is an optional runtime dependency (whitelisted): importing it must
 # never crash environments without the package. The factory treats a missing
 # package exactly like an unreachable server and falls back to SQLite.
 try:

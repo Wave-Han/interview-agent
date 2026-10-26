@@ -21,3 +21,12 @@ def test_save_with_fallback_returns_store_unchanged_on_success():
     ok = MemorySessionStore()
     out = save_with_fallback(ok, conn, "t", [])
     assert out is ok and ok.load("t") == []
+
+def test_rebuild_asked_extracts_rubric_ids():
+    from interview_agent.__main__ import rebuild_asked
+    msgs = [
+        {"role": "user", "content": "question_id: 7\nQuestion: Q7\npoints"},
+        {"role": "user", "content": "question_id: 8\nQuestion: Q8\npoints"},
+        {"role": "assistant", "content": "点评:答得不错(无 id 行)"},
+    ]
+    assert rebuild_asked(msgs) == {7, 8}

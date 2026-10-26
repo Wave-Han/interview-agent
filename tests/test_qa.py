@@ -32,7 +32,12 @@ def test_run_ask_builds_prompt_with_material():
     assert cli.calls[0] == ("embed", ["什么是浮动垃圾"])
     msgs = cli.calls[-1][1]
     assert "题#7" in msgs[1]["content"]
-    assert "候选人问题: 什么是浮动垃圾" in msgs[1]["content"]
+    content = msgs[1]["content"]
+    assert "候选人问题:" in content
+    assert "=== USER QUESTION START ===" in content
+    assert "=== USER QUESTION END ===" in content
+    assert "什么是浮动垃圾" in content
+    assert "untrusted data" in msgs[0]["content"]
 
 def test_pick_recommendation_prefers_wrong():
     qs = {1: _q(1), 2: _q(2)}

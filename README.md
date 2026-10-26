@@ -8,7 +8,7 @@ AI Agent 驱动的命令行刷题工具:针对 Java 后端 / AI Agent 方向的�
 
 ```
                     ┌─────────────────────────────────────────────┐
-                    │  __main__.py (CLI: quiz / index / ask)       │
+                    │  __main__.py (CLI: quiz/index(64/批)/ask)   │
                     └──────────────────────┬──────────────────────┘
                                            │
                     ┌──────────────────────▼──────────────────────┐
@@ -25,7 +25,7 @@ AI Agent 驱动的命令行刷题工具:针对 Java 后端 / AI Agent 方向的�
                             │                └─────────┬──────────────┘
               ┌─────────────▼────────────┐   ┌─────────▼──────────────┐
               │ llm/client.py            │   │ store/  (SQLite)       │
-              │ chat + embed(64/批向量)  │   │ questions / attempts / │
+              │ chat + embed(向量)       │   │ questions / attempts / │
               │ httpx + 指数退避重试 ×3   │   │ wrong_notes / vectors  │
               └─────────────┬────────────┘   └─────────┬──────────────┘
                             │                          │
@@ -33,7 +33,7 @@ AI Agent 驱动的命令行刷题工具:针对 Java 后端 / AI Agent 方向的�
               │ rag/                     │   │ session_store.py       │
               │ retriever:手写 cosine 检索│   │ Protocol 三实现        │
               │ qa:ask 固定回答管线       │   │ memory/SQLite/Redis    │
-              │ (index/ask 子命令走这里)  │   │ 工厂探测,不可用自动降级 │
+              │ (仅 ask 子命令经过这里) │   │ 工厂探测,不可用自动降级 │
               └──────────────────────────┘   └────────────────────────┘
 ```
 

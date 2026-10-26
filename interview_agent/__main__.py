@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 
 from .config import load_config
@@ -33,6 +34,23 @@ def save_with_fallback(store, conn, topic: str, messages: list[dict]):
         fallback = SqliteSessionStore(conn)
         fallback.save(topic, messages)
         return fallback
+
+
+def rebuild_asked(messages: list[dict]) -> set[int]:
+    """Rebuild the asked-question id set from a restored session's messages.
+
+    Every grading turn's user message starts with a 'question_id: N' rubric
+    line, so scanning message contents with that pattern recovers what the
+    driver already asked. Without this, --resume would leave asked empty and
+    the global wrong-first policy could re-ask a just-answered question.
+    """
+    asked: set[int] = set()
+    for m in messages:
+        for line in (m.get("content") or "").splitlines():
+            match = re.fullmatch(r"question_id: (\d+)", line)
+            if match:
+                asked.add(int(match.group(1)))
+    return asked
 
 
 def main():
@@ -75,8 +93,18 @@ def main():
         # Batch, not per-question: the provider caps one embeddings request
         # at 64 input items (found via real smoke test), so chunk the texts.
         vecs: list[list[float]] = []
-        for i in range(0, len(texts), 64):
-            vecs.extend(client.embed(texts[i:i + 64]))
+        try:
+            for i in range(0, len(texts), 64):
+                vecs.extend(client.embed(texts[i:i + 64]))
+        except LLMAPIError as e:
+            # 4xx from the API: same Chinese message as the ask branch
+            # (f62a1e4); no stats print because index has no topic context.
+            print(f"LLM 接口错误(状态码 {e.status_code}),请检查 .env 配置")
+            sys.exit(1)
+        except LLMConnectionError:
+            # Network failure: mirror the ask/quiz branch message.
+            print("LLM 连接失败,请检查网络与 .env 配置")
+            sys.exit(1)
         n = VectorRepo(conn).rebuild(list(zip([r[0] for r in rows], vecs)))
         print(f"已索引 {n} 题")
         return
@@ -109,6 +137,9 @@ def main():
         loaded = store.load(args.topic)
         if loaded is not None:
             driver.messages = loaded
+            # Restore the asked set too, or the wrong-first policy would
+            # re-ask questions the previous session already covered.
+            driver.asked = rebuild_asked(loaded)
             print(f"已恢复上次会话({len(loaded)} 条消息)")
         else:
             print("没有找到可恢复的会话,从新会话开始")
