@@ -134,6 +134,8 @@ LLM_MODEL=moonshot-v1-8k
 
 **Phase 3 结果:黄金集 60 案例档位命中 6.7%**(good 5.0% / partial 15.0% / bad 0.0%,no_record 51)——判题模型 glm-4-flash 在 eval 批量场景大量跳过 `record_result` 工具调用(harness 已试过 `tool_choice` 对象形式与 `"required"` 字符串形式两轮强制:quiz 真机冒烟生效,批量 eval 下该厂商均未稳定遵守,两轮 no_record 皆 51,已作为诚实基线接受)、且实际打分偏松(partial/bad 落工具的 5 例得 0.60~0.75 仅 3 例踩线命中)。这正是 eval 存在的意义:把「感觉判得还行」变成可度量的数字,P4 判题 prompt 调优与换更守协议的模型/厂商据此推进。
 
+条件命中率(仅统计实际调用判分工具的案例): 4/9 = 44.4%
+
 ## 开发
 
 ```bash
