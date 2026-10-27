@@ -173,7 +173,11 @@ def run_eval(client, qrepo, golden: list, sample: int | None = None,
             run_agent(client, registry, "",
                       build_rubric_message(q, case["answer"]),
                       on_output=lambda s: None, max_tool_calls=6,
-                      messages=messages)
+                      messages=messages,
+                      # Same forcing as the quiz grade(): the record MUST
+                      # happen even when the model's cold-start tool calling
+                      # is unreliable; the post-tool review stays free-form.
+                      force_first_tool="record_result")
         except Exception as e:
             # Real-run failures must stay diagnosable: the table only shows
             # an error count, so the per-case cause goes to the log.

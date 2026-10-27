@@ -48,7 +48,7 @@ AI Agent 驱动的命令行刷题工具:针对 Java 后端 / AI Agent 方向的�
 
 `ask` 的 RAG 链路:`index` 把「题面 + 评分点」整体编码为向量(64 条/批)存入 SQLite → `ask` 用同一向量模型编码你的提问 → 手写 cosine 取 top-3 命中 → 命中题的题面与评分点作为参考资料注入固定模板,由 LLM 生成回答并附「接着练」推荐。检索为手写 cosine(题库规模 70,万级再考虑 ANN)。
 
-`eval` 的链路(生成器-评估器):黄金集 20 题 × good/partial/bad 三档共 60 案例,草稿由 `scripts/generate_golden.py` 盲生成(prompt 只含题面与档位行为描述,评分点绝不流入,防止答案照抄 rubric),再人工校对定分数区间 → `eval` 把每个案例的答案注入与 quiz 完全相同的判题 prompt,走同一个 ReAct 循环,唯一差别是 `record_result` 落进内存 `EvalRecorder`(存储隔离,eval 永不写学习表)→ 档位命中率表格打印,逐 case 明细报告写入 `docs/eval/report-<日期>.md`。
+`eval` 的链路(生成器-评估器):黄金集 20 题 × good/partial/bad 三档共 60 案例,草稿由 `scripts/generate_golden.py` 盲生成(prompt 只含题面与档位行为描述,评分点绝不流入,防止答案照抄 rubric),再人工校对定分数区间 → `eval` 把每个案例的答案注入与 quiz 完全相同的判题 prompt(判题首轮同样以 `tool_choice` 强制调用 `record_result`),走同一个 ReAct 循环,唯一差别是 `record_result` 落进内存 `EvalRecorder`(存储隔离,eval 永不写学习表)→ 档位命中率表格打印,逐 case 明细报告写入 `docs/eval/report-<日期>.md`。
 
 ## 快速开始(30 秒)
 
@@ -76,14 +76,14 @@ python -m interview_agent ask "为什么三次握手不能两次"     # RAG 问�
 python -m interview_agent eval                            # 黄金集 eval:60 案例真实 API 判题,报告落盘 docs/eval/
 ```
 
-`eval` 示例输出(2026-10-27 实跑,glm-4-flash):
+`eval` 示例输出(2026-10-27 实跑,glm-4-flash,判题首轮已用 `tool_choice` 强制调用 `record_result`):
 
 ```text
 总案例: 60  命中: 3  命中率: 5.0%
-no_record: 49  error: 0  平均分差: 0.277
+no_record: 51  error: 0  平均分差: 0.283
 分档统计:
-  good     n=20  命中=2    命中率=10.0%
-  partial  n=20  命中=1    命中率=5.0%
+  good     n=20  命中=3    命中率=15.0%
+  partial  n=20  命中=0    命中率=0.0%
   bad      n=20  命中=0    命中率=0.0%
 ```
 
@@ -132,10 +132,10 @@ LLM_MODEL=moonshot-v1-8k
 | P3 ✅ | 多 Agent 生成器-评估器(`scripts/generate_golden.py` 盲生成黄金集)+ Eval 黄金集(eval 子命令,存储隔离) |
 | P4(可选) | Web 界面(Spring Boot)· 判题 prompt 调优闭环(用 eval 度量)· 跨模型对比 eval |
 
-**Phase 3 结果:黄金集 60 案例档位命中 5.0%**(good 10.0% / partial 5.0% / bad 0.0%,no_record 49)——判题模型 glm-4-flash 大量跳过 `record_result` 工具调用、且实际打分偏松(partial/bad 常得 0.75+),这正是 eval 存在的意义:把「感觉判得还行」变成可度量的数字,P4 据此做判题 prompt 调优闭环。
+**Phase 3 结果:黄金集 60 案例档位命中 5.0%**(good 15.0% / partial 0.0% / bad 0.0%,no_record 51)——判题模型 glm-4-flash 大量跳过 `record_result` 工具调用(harness 已在判题首轮用 `tool_choice` 强制,quiz 真机冒烟生效,但该厂商在 eval 批量场景下未稳定遵守,跳过依旧)、且实际打分偏松(partial/bad 落工具的 6 例得 0.50~0.75 全部 miss)。这正是 eval 存在的意义:把「感觉判得还行」变成可度量的数字,P4 据此做判题 prompt 调优闭环。
 
 ## 开发
 
 ```bash
-pytest -v          # 59 个测试,无需真实 API key(全部 mock)
+pytest -v          # 62 个测试,无需真实 API key(全部 mock)
 ```

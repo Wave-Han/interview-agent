@@ -73,13 +73,25 @@ class SessionDriver:
     def grade(self, user_answer: str) -> None:
         q = self.qrepo.get(self.current["question_id"])
         rubric_msg = build_rubric_message(q, user_answer)
+        # Snapshot the latest attempt id BEFORE grading: if the model still
+        # skips record_result (a provider may ignore tool_choice), the
+        # latest_feedback lookup below would return the PREVIOUS round's
+        # review dressed up as the current one — a stale-feedback bug.
+        prev_max = self.arepo.max_attempt_id(q.id)
         run_agent(self.client, self.registry, "", rubric_msg,
                   # tool lines only: the model's free-form turn can hallucinate
                   # grading-message templates; the DB feedback below is the
                   # authoritative review shown to the user.
                   on_output=lambda s: s.startswith("[tool]") and print(s),
                   max_tool_calls=self.max_tool_calls,
-                  messages=self.messages)
+                  messages=self.messages,
+                  # Harness-level guarantee the grading tool runs: force the
+                  # FIRST call to record_result; the review turn after the
+                  # tool result stays free-form (recommendation included).
+                  force_first_tool="record_result")
+        if self.arepo.max_attempt_id(q.id) == prev_max:
+            print("⚠️ 判题未完成(模型未调用判分工具),本题不计入记录")
+            return
         fb = self.arepo.latest_feedback(q.id)
         if fb:
             print(f"\n📊 点评:{fb}")

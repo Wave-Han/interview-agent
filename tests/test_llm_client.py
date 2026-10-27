@@ -5,6 +5,22 @@ from interview_agent.llm.client import LLMClient, LLMConnectionError
 
 CFG = Config("https://fake/v4", "sk-test", "m", ":memory:")
 
+def test_chat_tool_choice_sent_only_when_set(monkeypatch):
+    bodies = []
+    def fake_post(self, url, **kw):
+        bodies.append(kw["json"])
+        return httpx.Response(200, json={"choices": [
+            {"finish_reason": "stop", "message": {"content": "ok"}}]},
+            request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    c = LLMClient(CFG)
+    choice = {"type": "function", "function": {"name": "record_result"}}
+    tools = [{"type": "function", "function": {"name": "record_result"}}]
+    c.chat([{"role": "user", "content": "x"}], tools=tools, tool_choice=choice)
+    c.chat([{"role": "user", "content": "y"}], tools=tools)
+    assert bodies[0]["tool_choice"] == choice   # forced: present verbatim
+    assert "tool_choice" not in bodies[1]       # free-form: key absent
+
 def test_chat_parses_tool_calls(monkeypatch):
     def fake_post(self, url, **kw):
         # httpx >= 0.28: raise_for_status() needs a request bound to the response

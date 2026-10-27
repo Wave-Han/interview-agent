@@ -29,7 +29,7 @@ def test_session_driver_one_round():
             self.calls = 0
             self.captured = []   # snapshot per chat() call, for assertions
 
-        def chat(self, messages, tools=None):
+        def chat(self, messages, tools=None, tool_choice=None):
             from interview_agent.llm.client import LLMResponse, ToolCall
             self.calls += 1
             self.captured.append([dict(m) for m in messages])
@@ -58,6 +58,34 @@ def test_session_driver_one_round():
 
     stats = AttemptRepo(conn).stats("jvm")
     assert stats["attempts"] == 1 and stats["wrong_count"] == 1
+
+
+def test_grade_no_tool_call_shows_unfinished_not_stale_feedback(capsys):
+    # Provider ignoring tool_choice: model answers in plain text, no
+    # record_result. The PREVIOUS round's feedback must not be shown as
+    # the current review; an explicit unfinished notice prints instead.
+    conn = connect(":memory:")
+    init_schema(conn)
+    conn.execute("INSERT INTO questions VALUES (7,'jvm',2,'Q?','[\"p\"]')")
+    arepo = AttemptRepo(conn)
+    arepo.record(7, "old answer", 0.3, "旧点评")   # stale round exists
+
+    class PlainTextClient:
+        def chat(self, messages, tools=None, tool_choice=None):
+            from interview_agent.llm.client import LLMResponse
+            return LLMResponse("我直接点评,不调工具", [], "stop")
+
+    driver = SessionDriver(PlainTextClient(), QuestionRepo(conn), arepo)
+    driver.ask("jvm", wrong_only=False)
+    driver.grade("my answer")
+
+    out = capsys.readouterr().out
+    assert "⚠️ 判题未完成(模型未调用判分工具),本题不计入记录" in out
+    assert "📊 点评" not in out      # stale-feedback display bug: must not leak
+    assert "旧点评" not in out
+    n = conn.execute(
+        "SELECT COUNT(*) FROM attempts WHERE question_id=7").fetchone()[0]
+    assert n == 1                    # no new attempt recorded this round
 
 
 def test_build_rubric_message_format():

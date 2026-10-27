@@ -5,7 +5,7 @@
 ## 常用命令
 
 ```bash
-python -m pytest -q                                     # 全量测试(59 个)
+python -m pytest -q                                     # 全量测试(62 个)
 python -m interview_agent quiz --topic jvm              # 开练(topic: jvm/thread_pool/mysql/network/os/redis/netty_algo/agent)
 python -m interview_agent quiz --topic jvm --wrong-only # 只打错题
 python -m interview_agent quiz --topic jvm --resume     # 恢复上次会话(按 topic 存取)
@@ -46,4 +46,4 @@ python -m interview_agent eval                          # 黄金集 eval:60 案�
 
 ## Phase 4 待办
 
-Web 界面(Phase 4)· 判题 prompt 调优闭环(用 eval 度量;2026-10-27 基线:黄金集 60 案例档位命中 5.0%,no_record 49,模型常跳过 record_result 且打分偏松)· 跨模型对比 eval · good 档 spec 措辞统一("要点"→"内容")· 生成器非数字 id 友好报错
+Web 界面(Phase 4)· 判题 prompt 调优闭环(用 eval 度量;2026-10-27 基线:黄金集 60 案例档位命中 5.0%,good 15.0%/partial 0.0%/bad 0.0%,no_record 51——首轮 tool_choice 强制后 quiz 真机冒烟生效,但该厂商在 eval 批量下仍不稳定遵守;打分偏松,partial/bad 落工具的 6 例得 0.50~0.75 全 miss)· 跨模型对比 eval(可试 tool_choice="required" 字符串形式)· good 档 spec 措辞统一("要点"→"内容")· 生成器非数字 id 友好报错

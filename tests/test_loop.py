@@ -57,3 +57,23 @@ def test_loop_reuses_session_messages():
               {"role": "user", "content": "prev"}]
     run_agent(client, Reg(), "", "new", messages=shared)
     assert [m["content"] for m in shared] == ["s", "prev", "new"]
+
+def test_force_first_tool_forces_only_first_call():
+    seen = []
+    class Client:
+        def chat(self, messages, tools=None, tool_choice=None):
+            seen.append(tool_choice)
+            if len(seen) == 1:   # first turn: forced record_result
+                return resp_tool("c1", "record_result",
+                                 {"question_id": 7, "score": 1.0,
+                                  "feedback": "f", "user_answer": "a"})
+            return resp_text("review text")
+    class Reg:
+        def schemas(self): return []
+        def execute(self, name, args): return '{"ok": true}'
+    out = run_agent(Client(), Reg(), "s", "u",
+                    force_first_tool="record_result")
+    assert out == "review text"
+    assert seen[0] == {"type": "function",
+                       "function": {"name": "record_result"}}
+    assert seen[1] is None   # post-tool review turn is free-form

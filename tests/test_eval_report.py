@@ -35,7 +35,7 @@ def test_sample_reproducible(tmp_path):
                "cases": [{"band": "good", "range": [0.7, 1.0], "answer": "a"}]}
               for i in range(1, 6)]
     class OneShot:
-        def chat(self, m, tools=None):
+        def chat(self, m, tools=None, tool_choice=None):
             from interview_agent.llm.client import LLMResponse, ToolCall
             return LLMResponse("", [ToolCall("c", "record_result",
                                  {"question_id": 1, "score": 0.9,
