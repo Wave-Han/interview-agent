@@ -1,6 +1,8 @@
 # interview_agent/eval/runner.py
+import logging
 import random
 from dataclasses import dataclass
+from datetime import date
 
 from ..agent.loop import run_agent
 from ..session import build_system_prompt, build_rubric_message
@@ -77,6 +79,69 @@ class EvalReport:
     per_band: dict        # band -> {"n": int, "hits": int}
     cases: list[CaseResult]
 
+    def format_table(self) -> str:
+        """One-screen Chinese summary for terminal output."""
+        lines = [
+            f"总案例: {self.total}  命中: {self.hits}"
+            f"  命中率: {self._rate(self.hits, self.total)}",
+            f"no_record: {self.no_record}  error: {self.errors}"
+            f"  平均分差: {self.avg_delta:.3f}",
+            "分档统计:",
+        ]
+        for band in _ordered_bands(self.per_band):
+            s = self.per_band[band]
+            lines.append(f"  {band:<8} n={s['n']:<3} 命中={s['hits']:<3}"
+                         f"  命中率={self._rate(s['hits'], s['n'])}")
+        return "\n".join(lines)
+
+    def write_markdown(self, path: str, model: str = "") -> None:
+        """Write the full report (date, optional grader model name, per-band
+        table, per-case rows) to path as UTF-8 markdown."""
+        lines = [f"# Eval 报告 {date.today().isoformat()}", ""]
+        if model:
+            lines.append(f"- 判题模型: {model}")
+        lines += [
+            f"- 总案例: {self.total}",
+            f"- 命中: {self.hits}(命中率 {self._rate(self.hits, self.total)})",
+            f"- no_record: {self.no_record} / error: {self.errors}",
+            f"- 平均分差: {self.avg_delta:.3f}",
+            "",
+            "## 分档明细",
+            "",
+            "| 档位 | 案例数 | 命中数 | 命中率 |",
+            "| --- | --- | --- | --- |",
+        ]
+        for band in _ordered_bands(self.per_band):
+            s = self.per_band[band]
+            lines.append(f"| {band} | {s['n']} | {s['hits']} |"
+                         f" {self._rate(s['hits'], s['n'])} |")
+        lines += ["", "## 逐 case 结果", "",
+                  "| 题目 id | 档位 | 期望区间 | 模型评分 | 结果 |",
+                  "| --- | --- | --- | --- | --- |"]
+        for c in self.cases:
+            score = f"{c.score:.2f}" if c.score is not None else "-"
+            lines.append(f"| {c.question_id} | {c.band} | {c.expected_range} |"
+                         f" {score} | {c.status} |")
+        lines.append("")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    @staticmethod
+    def _rate(hits: int, n: int) -> str:
+        return f"{hits / n * 100:.1f}%" if n else "0.0%"
+
+
+# Canonical display order for bands. per_band keys are data-driven (a golden
+# set may lack a band entirely), so render only what exists — canonical
+# good->partial->bad order first, any unknown band appended after.
+BAND_ORDER = ("good", "partial", "bad")
+
+
+def _ordered_bands(per_band: dict) -> list[str]:
+    known = [b for b in BAND_ORDER if b in per_band]
+    extra = [b for b in per_band if b not in BAND_ORDER]
+    return known + extra
+
 
 def run_eval(client, qrepo, golden: list, sample: int | None = None,
              seed: int = 42) -> EvalReport:
@@ -92,6 +157,8 @@ def run_eval(client, qrepo, golden: list, sample: int | None = None,
         for case in entry["cases"]:
             all_cases.append((q, case))
     if sample is not None:
+        if sample > len(all_cases):
+            raise ValueError(f"sample 数量超过案例总数: {len(all_cases)}")
         all_cases = random.Random(seed).sample(all_cases, sample)
 
     results: list[CaseResult] = []
@@ -107,7 +174,10 @@ def run_eval(client, qrepo, golden: list, sample: int | None = None,
                       build_rubric_message(q, case["answer"]),
                       on_output=lambda s: None, max_tool_calls=6,
                       messages=messages)
-        except Exception:
+        except Exception as e:
+            # Real-run failures must stay diagnosable: the table only shows
+            # an error count, so the per-case cause goes to the log.
+            logging.warning(f"eval case qid={q.id} failed: {e}")
             results.append(CaseResult(q.id, case["band"], case["range"],
                                       None, False, "error"))
             continue

@@ -1,11 +1,12 @@
 # interview_agent/__main__.py
-# CLI entry: argparse subcommands (quiz/index/ask) + interactive loop +
+# CLI entry: argparse subcommands (quiz/index/ask/eval) + interactive loop +
 # graceful exit with session persistence and mid-session store fallback.
 import argparse
 import json
 import os
 import re
 import sys
+from datetime import date
 
 from .config import load_config
 from .store.db import connect, init_schema
@@ -16,6 +17,7 @@ from .llm.client import LLMClient, LLMConnectionError, LLMAPIError
 from .session import SessionDriver
 from .session_store import make_session_store, SqliteSessionStore
 from .rag.qa import run_ask, IndexEmptyError
+from .eval.runner import validate_golden, run_eval
 
 
 def save_with_fallback(store, conn, topic: str, messages: list[dict]):
@@ -68,6 +70,9 @@ def main():
     sub.add_parser("index")
     a = sub.add_parser("ask")
     a.add_argument("question")
+    ev = sub.add_parser("eval")
+    ev.add_argument("--sample", type=int, default=None,
+                    help="随机抽取的案例数(默认全部)")
     args = p.parse_args()
 
     # load_config raises bare KeyError on a missing env key (parked from T1);
@@ -130,6 +135,42 @@ def main():
             print("LLM 连接失败,请检查网络与 .env 配置")
             sys.exit(1)
         print(answer)
+        return
+
+    if args.cmd == "eval":
+        # Golden-set eval run: grade every case through the real agent loop
+        # (storage-isolated by run_eval), print the table, persist a dated
+        # markdown report. Exit code is always 0: an eval failure is a
+        # finding, not a CLI error.
+        golden_path = os.path.join(os.path.dirname(__file__), "data",
+                                   "golden.json")
+        if not os.path.exists(golden_path):
+            print("未找到黄金集文件,请先生成 interview_agent/data/golden.json")
+            sys.exit(0)
+        with open(golden_path, encoding="utf-8") as f:
+            golden = json.load(f)
+        try:
+            validate_golden(golden, qrepo)
+            report = run_eval(LLMClient(cfg), qrepo, golden,
+                              sample=args.sample)
+        except ValueError as e:
+            # unknown golden question_id, or --sample over the case count
+            print(e)
+            sys.exit(0)
+        except LLMAPIError as e:
+            # 4xx from the API: same Chinese message as index/ask branches.
+            print(f"LLM 接口错误(状态码 {e.status_code}),请检查 .env 配置")
+            sys.exit(0)
+        except LLMConnectionError:
+            # Network failure: mirror the index/ask branch message.
+            print("LLM 连接失败,请检查网络与 .env 配置")
+            sys.exit(0)
+        print(report.format_table())
+        out_dir = os.path.join("docs", "eval")
+        os.makedirs(out_dir, exist_ok=True)
+        out = os.path.join(out_dir, f"report-{date.today().isoformat()}.md")
+        report.write_markdown(out, model=cfg.model)
+        print(f"报告已写入: {out}")
         return
 
     # quiz: interactive loop with session persistence (topic is session id).
