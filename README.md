@@ -76,14 +76,14 @@ python -m interview_agent ask "为什么三次握手不能两次"     # RAG 问�
 python -m interview_agent eval                            # 黄金集 eval:60 案例真实 API 判题,报告落盘 docs/eval/
 ```
 
-`eval` 示例输出(2026-10-27 实跑,glm-4-flash,判题首轮已用 `tool_choice` 强制调用 `record_result`):
+`eval` 示例输出(2026-10-27 实跑,glm-4-flash,判题首轮已用 `tool_choice="required"` 强制工具调用):
 
 ```text
-总案例: 60  命中: 3  命中率: 5.0%
-no_record: 51  error: 0  平均分差: 0.283
+总案例: 60  命中: 4  命中率: 6.7%
+no_record: 51  error: 0  平均分差: 0.211
 分档统计:
-  good     n=20  命中=3    命中率=15.0%
-  partial  n=20  命中=0    命中率=0.0%
+  good     n=20  命中=1    命中率=5.0%
+  partial  n=20  命中=3    命中率=15.0%
   bad      n=20  命中=0    命中率=0.0%
 ```
 
@@ -132,7 +132,7 @@ LLM_MODEL=moonshot-v1-8k
 | P3 ✅ | 多 Agent 生成器-评估器(`scripts/generate_golden.py` 盲生成黄金集)+ Eval 黄金集(eval 子命令,存储隔离) |
 | P4(可选) | Web 界面(Spring Boot)· 判题 prompt 调优闭环(用 eval 度量)· 跨模型对比 eval |
 
-**Phase 3 结果:黄金集 60 案例档位命中 5.0%**(good 15.0% / partial 0.0% / bad 0.0%,no_record 51)——判题模型 glm-4-flash 大量跳过 `record_result` 工具调用(harness 已在判题首轮用 `tool_choice` 强制,quiz 真机冒烟生效,但该厂商在 eval 批量场景下未稳定遵守,跳过依旧)、且实际打分偏松(partial/bad 落工具的 6 例得 0.50~0.75 全部 miss)。这正是 eval 存在的意义:把「感觉判得还行」变成可度量的数字,P4 据此做判题 prompt 调优闭环。
+**Phase 3 结果:黄金集 60 案例档位命中 6.7%**(good 5.0% / partial 15.0% / bad 0.0%,no_record 51)——判题模型 glm-4-flash 在 eval 批量场景大量跳过 `record_result` 工具调用(harness 已试过 `tool_choice` 对象形式与 `"required"` 字符串形式两轮强制:quiz 真机冒烟生效,批量 eval 下该厂商均未稳定遵守,两轮 no_record 皆 51,已作为诚实基线接受)、且实际打分偏松(partial/bad 落工具的 5 例得 0.60~0.75 仅 3 例踩线命中)。这正是 eval 存在的意义:把「感觉判得还行」变成可度量的数字,P4 判题 prompt 调优与换更守协议的模型/厂商据此推进。
 
 ## 开发
 

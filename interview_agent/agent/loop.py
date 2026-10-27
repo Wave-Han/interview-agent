@@ -19,8 +19,12 @@ def run_agent(client, registry, system: str, user_input: str,
         # never learned the kwarg (older fakes, alternate backends) working.
         kwargs = {}
         if force_first_tool and i == 0:
-            kwargs["tool_choice"] = {"type": "function",
-                                     "function": {"name": force_first_tool}}
+            # STRING form: the provider honors "required" reliably but was
+            # observed ignoring the object form under eval's batch pattern.
+            # "required" = must call SOME tool; record_result is the only
+            # tool in eval's registry, and quiz's grading-turn system prompt
+            # already mandates record_result — acceptable narrowing.
+            kwargs["tool_choice"] = "required"
         resp = client.chat(messages, registry.schemas(), **kwargs)
         if not resp.tool_calls:
             on_output(resp.content)

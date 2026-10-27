@@ -69,10 +69,11 @@ class LLMClient:
         raise LLMConnectionError(str(last_err))
 
     def chat(self, messages, tools=None,
-             tool_choice: dict | None = None) -> LLMResponse:
-        # tool_choice: optional OpenAI-compatible forced-tool directive,
-        # e.g. {"type": "function", "function": {"name": ...}}. Sent only
-        # when set so callers keep full control over request shape.
+             tool_choice: dict | str | None = None) -> LLMResponse:
+        # tool_choice: optional OpenAI-compatible tool-choice directive —
+        # object form {"type": "function", "function": {"name": ...}} or
+        # string form "auto"/"none"/"required". Sent only when set so
+        # callers keep full control over request shape.
         body = {"model": self.cfg.model, "messages": messages}
         if tools:
             body["tools"] = tools

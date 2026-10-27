@@ -46,4 +46,4 @@ python -m interview_agent eval                          # 黄金集 eval:60 案�
 
 ## Phase 4 待办
 
-Web 界面(Phase 4)· 判题 prompt 调优闭环(用 eval 度量;2026-10-27 基线:黄金集 60 案例档位命中 5.0%,good 15.0%/partial 0.0%/bad 0.0%,no_record 51——首轮 tool_choice 强制后 quiz 真机冒烟生效,但该厂商在 eval 批量下仍不稳定遵守;打分偏松,partial/bad 落工具的 6 例得 0.50~0.75 全 miss)· 跨模型对比 eval(可试 tool_choice="required" 字符串形式)· good 档 spec 措辞统一("要点"→"内容")· 生成器非数字 id 友好报错
+Web 界面(Phase 4)· 判题 prompt 调优闭环(用 eval 度量;2026-10-27 基线:黄金集 60 案例档位命中 6.7%,good 5.0%/partial 15.0%/bad 0.0%,no_record 51——tool_choice 对象形式与 "required" 字符串形式两轮强制均未压下该厂商批量场景的随机跳过,已作诚实基线接受;打分偏松,partial/bad 落工具的 5 例 0.60~0.75)· 跨模型对比 eval(优先换更守 tool_choice 协议的模型/厂商)· good 档 spec 措辞统一("要点"→"内容")· 生成器非数字 id 友好报错

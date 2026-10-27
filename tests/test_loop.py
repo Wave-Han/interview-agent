@@ -74,6 +74,5 @@ def test_force_first_tool_forces_only_first_call():
     out = run_agent(Client(), Reg(), "s", "u",
                     force_first_tool="record_result")
     assert out == "review text"
-    assert seen[0] == {"type": "function",
-                       "function": {"name": "record_result"}}
-    assert seen[1] is None   # post-tool review turn is free-form
+    assert seen[0] == "required"   # string form: provider-reliable forcing
+    assert seen[1] is None         # post-tool review turn is free-form
