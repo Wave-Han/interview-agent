@@ -27,6 +27,10 @@ class LLMAPIError(Exception):
 
 class LLMClient:
     """Thin OpenAI-compatible chat client (works with GLM/DeepSeek/Kimi)."""
+    # The provider (Zhipu) caps one embeddings request at 64 input items
+    # (found via real smoke test), so embed() chunks internally.
+    EMBED_BATCH = 64
+
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self._http_client: httpx.Client | None = None
@@ -58,7 +62,7 @@ class LLMClient:
                 if 400 <= status < 500 and status != 429:
                     raise LLMAPIError(status, e.response.text) from e
                 last_err = e
-            except (httpx.HTTPError, KeyError, ValueError) as e:
+            except (httpx.HTTPError, ValueError) as e:
                 last_err = e
             if attempt < 2:  # exponential backoff: 1s, 2s; none after final attempt
                 time.sleep(2 ** attempt)
@@ -80,15 +84,26 @@ class LLMClient:
             raise LLMConnectionError(f"malformed response: missing {e}") from e
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed texts; returned vectors ordered to match the input list."""
-        payload = self._post("/embeddings",
-                             {"model": self.cfg.embedding_model, "input": texts})
-        try:
-            data = payload["data"]
-            if len(data) != len(texts):
-                raise ValueError(
-                    f"embedding count mismatch: sent {len(texts)}, got {len(data)}")
-            return [item["embedding"]
-                    for item in sorted(data, key=lambda d: d["index"])]
-        except KeyError as e:
-            raise LLMConnectionError(f"malformed response: missing {e}") from e
+        """Embed texts; returned vectors ordered to match the input list.
+
+        Requests are chunked at EMBED_BATCH (provider cap) and the per-chunk
+        results concatenated, so callers see one call for any input size.
+        """
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), self.EMBED_BATCH):
+            chunk = texts[start:start + self.EMBED_BATCH]
+            payload = self._post("/embeddings",
+                                 {"model": self.cfg.embedding_model,
+                                  "input": chunk})
+            try:
+                data = payload["data"]
+                if len(data) != len(chunk):
+                    raise ValueError(
+                        f"embedding count mismatch: sent {len(chunk)}, "
+                        f"got {len(data)}")
+                vectors.extend(item["embedding"]
+                               for item in sorted(data, key=lambda d: d["index"]))
+            except KeyError as e:
+                raise LLMConnectionError(
+                    f"malformed response: missing {e}") from e
+        return vectors

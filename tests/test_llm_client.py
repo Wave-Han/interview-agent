@@ -75,3 +75,18 @@ def test_malformed_200_body_wrapped(monkeypatch):
     monkeypatch.setattr(httpx.Client, "post", fake_post)
     with pytest.raises(LLMConnectionError):
         LLMClient(CFG).chat([{"role": "user", "content": "x"}])
+
+def test_embed_chunks_at_64(monkeypatch):
+    import httpx
+    from interview_agent.llm.client import LLMClient
+    calls = []
+    def fake_post(self, url, **kw):
+        calls.append(kw["json"]["input"])
+        data = [{"index": i, "embedding": [float(len(calls)), float(i)]}
+                for i in range(len(kw["json"]["input"]))]
+        return httpx.Response(200, json={"data": data},
+                              request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    out = LLMClient(CFG).embed([f"t{i}" for i in range(65)])   # Review Focus #4
+    assert calls == [[f"t{i}" for i in range(64)], ["t64"]]
+    assert len(out) == 65 and out[64] == [2.0, 0.0]            # 2nd batch, index 0

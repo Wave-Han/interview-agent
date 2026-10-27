@@ -24,7 +24,9 @@ def save_with_fallback(store, conn, topic: str, messages: list[dict]):
     A store that dies mid-session (e.g. Redis restart) must not lose the
     conversation: catch the exception, print one Chinese line, replace the
     store with a SqliteSessionStore that has the messages re-saved, and
-    return it so the caller keeps using the working backend.
+    return it so the caller keeps using the working backend. If the SQLite
+    fallback dies too, print instead of raising so the session can still
+    end gracefully.
     """
     try:
         store.save(topic, messages)
@@ -32,7 +34,10 @@ def save_with_fallback(store, conn, topic: str, messages: list[dict]):
     except Exception:
         print("会话存储异常,已切换到本地 SQLite 保存")
         fallback = SqliteSessionStore(conn)
-        fallback.save(topic, messages)
+        try:
+            fallback.save(topic, messages)
+        except Exception:
+            print("本地保存也失败,本次会话记录未能持久化")
         return fallback
 
 
@@ -90,12 +95,9 @@ def main():
             print("已索引 0 题")
             return
         client = LLMClient(cfg)
-        # Batch, not per-question: the provider caps one embeddings request
-        # at 64 input items (found via real smoke test), so chunk the texts.
-        vecs: list[list[float]] = []
+        # Chunking at the provider's 64-item cap happens inside embed().
         try:
-            for i in range(0, len(texts), 64):
-                vecs.extend(client.embed(texts[i:i + 64]))
+            vecs = client.embed(texts)
         except LLMAPIError as e:
             # 4xx from the API: same Chinese message as the ask branch
             # (f62a1e4); no stats print because index has no topic context.
