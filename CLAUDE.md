@@ -1,16 +1,17 @@
 # interview-agent
 
-面试复习 Agent:CLI 出题 → 用户口述答案 → LLM 对照评分要点(rubric)判分落库 → 错题优先重现。Phase 2(RAG 问答 + 会话存储)已完成,仓库:https://github.com/Wave-Han/interview-agent
+面试复习 Agent:CLI 出题 → 用户口述答案 → LLM 对照评分要点(rubric)判分落库 → 错题优先重现。Phase 3(多 Agent 生成器-评估器 + Eval 黄金集)已完成,仓库:https://github.com/Wave-Han/interview-agent
 
 ## 常用命令
 
 ```bash
-python -m pytest -q                                     # 全量测试(44 个)
+python -m pytest -q                                     # 全量测试(59 个)
 python -m interview_agent quiz --topic jvm              # 开练(topic: jvm/thread_pool/mysql/network/os/redis/netty_algo/agent)
 python -m interview_agent quiz --topic jvm --wrong-only # 只打错题
 python -m interview_agent quiz --topic jvm --resume     # 恢复上次会话(按 topic 存取)
 python -m interview_agent index                         # 建/重建向量索引(改题后必须重跑)
 python -m interview_agent ask "为什么三次握手不能两次"    # RAG 问答(需先跑过 index)
+python -m interview_agent eval                          # 黄金集 eval:60 案例真实 API 判题,报告落盘 docs/eval/
 ```
 
 ## 架构速览
@@ -24,6 +25,7 @@ python -m interview_agent ask "为什么三次握手不能两次"    # RAG 问�
 | `interview_agent/tools/` | pick_question / record_result / get_stats;registry.execute 永不抛异常 |
 | `interview_agent/store/` | SQLite 五表(questions/attempts/wrong_notes/question_vectors/sessions);错题状态机:连对 2 次 → mastered |
 | `interview_agent/rag/` | 手写 cosine 检索(retriever)+ ask 子命令固定管线(qa,含 IndexEmpty 守卫) |
+| `interview_agent/eval/` | 生成器-评估器:黄金集 20 题 × 3 档逐案例过真实判题 ReAct 循环;EvalRecorder 内存接收 record_result(存储隔离,eval 永不写学习表);表格打印 + 报告落盘 docs/eval/ |
 | `interview_agent/session_store.py` | SessionStore 协议三实现(memory/SQLite/Redis),工厂探测 REDIS_URL,不可用自动降级 SQLite |
 
 ## 硬性约定(改代码前必读)
@@ -42,6 +44,6 @@ python -m interview_agent ask "为什么三次握手不能两次"    # RAG 问�
 - 新特性:先 brainstorming 出 spec(`docs/superpowers/specs/`),大特性走 subagent-driven-development(历史 spec/plan 在 `docs/superpowers/` 有完整留痕)。
 - 真实 LLM 行为改动必须真实 API 冒烟——mock 验证逻辑,冒烟验证行为(两个生产 bug 都是冒烟抓的)。
 
-## Phase 3 待办
+## Phase 4 待办
 
-多 Agent(出题/判题分离,验证上下文隔离)· Eval 黄金集(20 题判题准确率)· Web 界面(Phase 4)· seed guard 白名单收紧为 (id, point) 二元组 · save_with_fallback 回退后再失败的兜底
+Web 界面(Phase 4)· 判题 prompt 调优闭环(用 eval 度量;2026-10-27 基线:黄金集 60 案例档位命中 5.0%,no_record 49,模型常跳过 record_result 且打分偏松)· 跨模型对比 eval · good 档 spec 措辞统一("要点"→"内容")· 生成器非数字 id 友好报错
