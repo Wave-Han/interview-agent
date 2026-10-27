@@ -147,8 +147,18 @@ def main():
         if not os.path.exists(golden_path):
             print("未找到黄金集文件,请先生成 interview_agent/data/golden.json")
             sys.exit(0)
-        with open(golden_path, encoding="utf-8") as f:
-            golden = json.load(f)
+        # Loading guarded on its own: a hand-curated golden.json with
+        # invalid JSON (or an unreadable file) must print a Chinese hint,
+        # not traceback — the eval exit code stays 0. Kept separate from
+        # the run try below so a JSONDecodeError raised deep inside LLM
+        # tool-arg parsing is never mislabeled as file corruption.
+        try:
+            with open(golden_path, encoding="utf-8") as f:
+                golden = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            print(f"黄金集文件损坏或不可读: {golden_path},"
+                  "请检查 data/golden.json 格式")
+            sys.exit(0)
         try:
             validate_golden(golden, qrepo)
             report = run_eval(LLMClient(cfg), qrepo, golden,
