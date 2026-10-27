@@ -3,6 +3,7 @@ import json
 
 from .tools.registry import build_default_registry
 from .agent.loop import run_agent
+from .store.questions import Question
 
 
 def build_system_prompt() -> str:
@@ -24,6 +25,20 @@ def build_system_prompt() -> str:
         " messages: your visible reply must be ONLY the Chinese review"
         " text, with no question_id lines, no rubric, and no USER ANSWER"
         " markers.")
+
+
+def build_rubric_message(q: Question, answer: str) -> str:
+    """Build the grading message for one question. Shared by the quiz flow
+    (SessionDriver.grade) and the eval flow; the format below is the grading
+    contract with the model (build_system_prompt documents it), so it must
+    not change."""
+    # First line exposes the question_id the model must echo into
+    # record_result; delimiters fence the answer off from prompt injection.
+    return (
+        "question_id: %d\nQuestion: %s\nanswer_points(rubric): %s\n"
+        "=== USER ANSWER START ===\n%s\n=== USER ANSWER END ==="
+        % (q.id, q.question,
+           json.dumps(q.answer_points, ensure_ascii=False), answer))
 
 
 class SessionDriver:
@@ -57,13 +72,7 @@ class SessionDriver:
 
     def grade(self, user_answer: str) -> None:
         q = self.qrepo.get(self.current["question_id"])
-        # First line exposes the question_id the model must echo into
-        # record_result; delimiters fence the answer off from prompt injection.
-        rubric_msg = (
-            "question_id: %d\nQuestion: %s\nanswer_points(rubric): %s\n"
-            "=== USER ANSWER START ===\n%s\n=== USER ANSWER END ==="
-            % (q.id, q.question,
-               json.dumps(q.answer_points, ensure_ascii=False), user_answer))
+        rubric_msg = build_rubric_message(q, user_answer)
         run_agent(self.client, self.registry, "", rubric_msg,
                   # tool lines only: the model's free-form turn can hallucinate
                   # grading-message templates; the DB feedback below is the

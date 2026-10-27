@@ -58,3 +58,15 @@ def test_session_driver_one_round():
 
     stats = AttemptRepo(conn).stats("jvm")
     assert stats["attempts"] == 1 and stats["wrong_count"] == 1
+
+
+def test_build_rubric_message_format():
+    from interview_agent.session import build_rubric_message
+    from interview_agent.store.questions import Question
+    q = Question(7, "jvm", 2, "什么是浮动垃圾?",
+                 ["并发期新产生", "本轮收不掉"])
+    msg = build_rubric_message(q, "并发时产生的垃圾")
+    assert msg.startswith("question_id: 7\n")
+    assert "Question: 什么是浮动垃圾?" in msg
+    assert '["并发期新产生", "本轮收不掉"]' in msg
+    assert "=== USER ANSWER START ===\n并发时产生的垃圾\n=== USER ANSWER END ===" in msg
