@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# start-all: bring up both services of the dual-service stack.
+#   1) FastAPI AI service  (uvicorn,  port 8000) -> logs/uvicorn.log
+#   2) Spring Boot web app (mvn spring-boot:run, port 8080) -> logs/spring.log
+# Both run in the background; this script probes their endpoints (up to ~40s
+# each) and prints the entry URLs. Runs on Windows Git Bash.
+
+set -u
+cd "$(dirname "$0")"  # always launch from repo root so the package imports
+
+mkdir -p logs
+
+echo "启动 AI 服务(FastAPI, 端口 8000)..."
+python -m uvicorn interview_agent.server:app --port 8000 > logs/uvicorn.log 2>&1 &
+echo $! > logs/uvicorn.pid
+
+echo "启动 Web 服务(Spring Boot, 端口 8080)..."
+mvn -f web spring-boot:run > logs/spring.log 2>&1 &
+echo $! > logs/spring.pid
+
+# Probe one URL until it answers HTTP 200 or the ~40s budget runs out
+# (20 tries x 2s). Prints a one-line status either way.
+wait_for() {
+    local name="$1" url="$2" tries=20 code=""
+    local i
+    for i in $(seq 1 "$tries"); do
+        code=$(curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || true)
+        if [ "$code" = "200" ]; then
+            echo "[OK]   $name 就绪($url,HTTP $code)"
+            return 0
+        fi
+        sleep 2
+    done
+    echo "[FAIL] $name 约 $((tries * 2))s 内未就绪(最后 HTTP 码:${code:-无}),请查 logs/ 下对应日志"
+    return 1
+}
+
+fail=0
+wait_for "AI 服务" "http://localhost:8000/api/stats?topic=jvm" || fail=1
+wait_for "Web 服务" "http://localhost:8080/practice" || fail=1
+
+echo ""
+echo "Web: http://localhost:8080/practice | AI: http://localhost:8000"
+if [ "$fail" != "0" ]; then
+    echo "(有服务未就绪;日志:logs/uvicorn.log、logs/spring.log)"
+fi
+exit "$fail"
