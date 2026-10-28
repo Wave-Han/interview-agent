@@ -34,6 +34,11 @@ public class AiClientService {
         this.rest = restClient;
     }
 
+    /**
+     * Pick a question for a topic. Convention: callers (the web controller)
+     * always pass a non-null {@code excludeIds} — "" when nothing is excluded
+     * — so this method never has to branch on null.
+     */
     public QuestionDto fetchQuestion(String topic, boolean wrongOnly, String excludeIds) {
         try {
             return rest.get()
@@ -47,10 +52,15 @@ public class AiClientService {
     }
 
     public GradeResultDto grade(long questionId, String answer) {
+        // Null args must fail fast as IllegalArgumentException, not be
+        // mistranslated into "service down" by the catch-all below — hence
+        // validation and body building happen before the try block.
+        requireNonNull("answer", answer);
+        Map<String, Object> body = Map.of("question_id", questionId, "answer", answer);
         try {
             return rest.post().uri("/api/grade")
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                    .body(Map.of("question_id", questionId, "answer", answer))
+                    .body(body)
                     .retrieve().body(GradeResultDto.class);
         } catch (Exception e) {
             throw new AiServiceUnavailableException(e);
@@ -58,10 +68,12 @@ public class AiClientService {
     }
 
     public AskResultDto ask(String query) {
+        requireNonNull("query", query);
+        Map<String, Object> body = Map.of("query", query);
         try {
             return rest.post().uri("/api/ask")
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                    .body(Map.of("query", query))
+                    .body(body)
                     .retrieve().body(AskResultDto.class);
         } catch (Exception e) {
             throw new AiServiceUnavailableException(e);
@@ -74,6 +86,12 @@ public class AiClientService {
                     .retrieve().body(StatsDto.class);
         } catch (Exception e) {
             throw new AiServiceUnavailableException(e);
+        }
+    }
+
+    private static void requireNonNull(String name, String value) {
+        if (value == null) {
+            throw new IllegalArgumentException(name + " must not be null");
         }
     }
 }

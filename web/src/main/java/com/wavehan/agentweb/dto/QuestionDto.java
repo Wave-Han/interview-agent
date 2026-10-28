@@ -11,7 +11,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record QuestionDto(
-        @JsonProperty("question_id") Integer questionId,
+        @JsonProperty("question_id") Long questionId,
         String topic,
         Integer difficulty,
         String question,

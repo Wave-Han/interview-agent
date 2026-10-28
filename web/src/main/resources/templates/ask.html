@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>自由提问 - 面试复习 Agent</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">面试复习 Agent</span>
+  <div class="nav-links">
+    <a href="/practice">刷题练习</a>
+    <a href="/stats">学习统计</a>
+    <a href="/ask" class="active">自由提问</a>
+  </div>
+</nav>
+<main class="container">
+  <section class="card">
+    <h2>向 AI 提问</h2>
+    <div class="controls">
+      <label for="query">问题:</label>
+      <input type="text" id="query" size="40" placeholder="例如:为什么三次握手不能两次">
+      <button id="ask-btn" class="primary">提问</button>
+    </div>
+    <div id="banner" class="banner hidden" role="alert"></div>
+  </section>
+
+  <section id="answer-card" class="card hidden">
+    <h2>回答</h2>
+    <div id="answer-body"></div>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function showBanner(text) {
+    const banner = $('banner');
+    banner.textContent = text;
+    banner.classList.remove('hidden');
+  }
+
+  $('ask-btn').addEventListener('click', () => {
+    const query = $('query').value.trim();
+    if (!query) {
+      return;
+    }
+    fetch('/web/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query })
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.error) {
+          $('answer-card').classList.add('hidden');
+          showBanner(data.error);
+          return;
+        }
+        $('banner').classList.add('hidden');
+        const body = $('answer-body');
+        body.textContent = '';
+        const paragraph = document.createElement('p');
+        if (data.answer) {
+          paragraph.textContent = data.answer;
+          body.appendChild(paragraph);
+          if (data.recommend_question_id !== null && data.recommend_question_id !== undefined) {
+            const recommend = document.createElement('p');
+            recommend.className = 'recommend';
+            recommend.textContent = '💡 接着练:题 #' + data.recommend_question_id;
+            body.appendChild(recommend);
+          }
+        } else {
+          // Message-only branch: guidance instead of an answer.
+          paragraph.textContent = data.message || '暂无回答,请换个问法试试。';
+          body.appendChild(paragraph);
+        }
+        $('answer-card').classList.remove('hidden');
+      })
+      .catch(() => {
+        $('answer-card').classList.add('hidden');
+        showBanner('AI 服务不可用,请先启动 Python 服务');
+      });
+  });
+</script>
+</body>
+</html>

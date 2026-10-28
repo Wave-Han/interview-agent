@@ -11,6 +11,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AskResultDto(
         String answer,
-        @JsonProperty("recommend_question_id") Integer recommendQuestionId,
+        @JsonProperty("recommend_question_id") Long recommendQuestionId,
         String message) {
 }

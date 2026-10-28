@@ -119,6 +119,17 @@ class AiClientServiceTest {
     }
 
     @Test
+    void nullArgumentsFailFastAsIllegalArgument() {
+        RestClient rest = mock(RestClient.class);
+        AiClientService service = new AiClientService(rest);
+
+        // A null answer/query is a caller bug: it must surface as
+        // IllegalArgumentException, never be mistranslated to "service down".
+        assertThrows(IllegalArgumentException.class, () -> service.grade(7L, null));
+        assertThrows(IllegalArgumentException.class, () -> service.ask(null));
+    }
+
+    @Test
     void statsMapsSnakeCase() throws Exception {
         StatsDto dto = mapper.readValue(
                 "{\"attempts\":3,\"avg_score\":0.67,\"wrong_count\":1}", StatsDto.class);

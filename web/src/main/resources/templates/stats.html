@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>学习统计 - 面试复习 Agent</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">面试复习 Agent</span>
+  <div class="nav-links">
+    <a href="/practice">刷题练习</a>
+    <a href="/stats" class="active">学习统计</a>
+    <a href="/ask">自由提问</a>
+  </div>
+</nav>
+<main class="container">
+  <section class="card">
+    <h2>选择专题查看统计</h2>
+    <div class="controls">
+      <label for="topic">专题:</label>
+      <select id="topic">
+        <option value="jvm">jvm</option>
+        <option value="thread_pool">thread_pool</option>
+        <option value="mysql">mysql</option>
+        <option value="network">network</option>
+        <option value="os">os</option>
+        <option value="redis">redis</option>
+        <option value="netty_algo">netty_algo</option>
+        <option value="agent">agent</option>
+      </select>
+      <button id="query-btn" class="primary">查询</button>
+    </div>
+    <div id="banner" class="banner hidden" role="alert"></div>
+  </section>
+
+  <section id="stats-card" class="card hidden">
+    <table class="stats-table">
+      <tbody>
+        <tr>
+          <th>答题数</th>
+          <td id="stat-attempts"></td>
+        </tr>
+        <tr>
+          <th>平均分</th>
+          <td id="stat-avg-score"></td>
+        </tr>
+        <tr>
+          <th>未掌握错题数</th>
+          <td id="stat-wrong-count"></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function showBanner(text) {
+    const banner = $('banner');
+    banner.textContent = text;
+    banner.classList.remove('hidden');
+  }
+
+  $('query-btn').addEventListener('click', () => {
+    fetch('/web/stats?topic=' + encodeURIComponent($('topic').value))
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.error) {
+          $('stats-card').classList.add('hidden');
+          showBanner(data.error);
+          return;
+        }
+        $('banner').classList.add('hidden');
+        // avg_score arrives already rounded to 2 decimals by the service.
+        $('stat-attempts').textContent = data.attempts;
+        $('stat-avg-score').textContent = data.avg_score;
+        $('stat-wrong-count').textContent = data.wrong_count;
+        $('stats-card').classList.remove('hidden');
+      })
+      .catch(() => {
+        $('stats-card').classList.add('hidden');
+        showBanner('AI 服务不可用,请先启动 Python 服务');
+      });
+  });
+</script>
+</body>
+</html>

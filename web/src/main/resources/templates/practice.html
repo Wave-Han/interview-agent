@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>刷题练习 - 面试复习 Agent</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body>
+<nav class="nav">
+  <span class="brand">面试复习 Agent</span>
+  <div class="nav-links">
+    <a href="/practice" class="active">刷题练习</a>
+    <a href="/stats">学习统计</a>
+    <a href="/ask">自由提问</a>
+  </div>
+</nav>
+<main class="container">
+  <section class="card">
+    <h2>选择专题开始练习</h2>
+    <div class="controls">
+      <label for="topic">专题:</label>
+      <select id="topic">
+        <option value="jvm">jvm</option>
+        <option value="thread_pool">thread_pool</option>
+        <option value="mysql">mysql</option>
+        <option value="network">network</option>
+        <option value="os">os</option>
+        <option value="redis">redis</option>
+        <option value="netty_algo">netty_algo</option>
+        <option value="agent">agent</option>
+      </select>
+      <button id="start-btn" class="primary">开始</button>
+    </div>
+    <div id="banner" class="banner hidden" role="alert"></div>
+  </section>
+
+  <section id="question-card" class="card hidden">
+    <div class="question-meta">
+      <span id="question-no" class="tag"></span>
+      <span id="question-difficulty" class="tag"></span>
+    </div>
+    <p id="question-text" class="question-text"></p>
+  </section>
+
+  <section id="notice-card" class="card hidden">
+    <p id="notice-text"></p>
+  </section>
+
+  <section id="answer-card" class="card hidden">
+    <h2>你的回答</h2>
+    <textarea id="answer" rows="8" placeholder="像面试口述一样写下你的答案"></textarea>
+    <div class="controls">
+      <button id="submit-btn" class="primary">提交判题</button>
+      <button id="next-btn" class="hidden">下一题</button>
+    </div>
+  </section>
+
+  <section id="review-card" class="card hidden">
+    <h2>点评</h2>
+    <div id="review-body"></div>
+  </section>
+</main>
+<script>
+  // Session state: the question on screen plus every id already asked
+  // (comma-joined into excludeIds so the pool rotates before resurfacing).
+  let currentQuestionId = null;
+  const askedIds = [];
+
+  const $ = (id) => document.getElementById(id);
+
+  function showBanner(text) {
+    const banner = $('banner');
+    banner.textContent = text;
+    banner.classList.remove('hidden');
+  }
+
+  function hideBanner() {
+    $('banner').classList.add('hidden');
+  }
+
+  function loadQuestion() {
+    const params = new URLSearchParams({
+      topic: $('topic').value,
+      wrongOnly: 'false',
+      excludeIds: askedIds.join(',')
+    });
+    fetch('/web/question?' + params.toString())
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.error) {
+          // Failure keeps the rendered question card and textarea intact.
+          showBanner(data.error);
+          return;
+        }
+        hideBanner();
+        $('review-card').classList.add('hidden');
+        $('notice-card').classList.add('hidden');
+        if (!data.question) {
+          // Pool exhausted: the Python service answered with a notice.
+          currentQuestionId = null;
+          $('question-card').classList.add('hidden');
+          $('answer-card').classList.add('hidden');
+          $('notice-text').textContent = data.message || '该专题暂无可用题目';
+          $('notice-card').classList.remove('hidden');
+          return;
+        }
+        currentQuestionId = data.question_id;
+        if (!askedIds.includes(currentQuestionId)) {
+          askedIds.push(currentQuestionId);
+        }
+        $('question-no').textContent = '题 #' + currentQuestionId;
+        $('question-difficulty').textContent = '难度 ' + data.difficulty;
+        $('question-text').textContent = data.question;
+        $('question-card').classList.remove('hidden');
+        $('answer-card').classList.remove('hidden');
+        $('answer').value = '';
+        $('next-btn').classList.add('hidden');
+      })
+      .catch(() => showBanner('AI 服务不可用,请先启动 Python 服务'));
+  }
+
+  function submitAnswer() {
+    fetch('/web/grade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId: currentQuestionId, answer: $('answer').value })
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.error) {
+          // Failure keeps the textarea and question card intact for retry.
+          showBanner(data.error);
+          return;
+        }
+        hideBanner();
+        const body = $('review-body');
+        body.textContent = '';
+        if (data.recorded) {
+          const score = document.createElement('strong');
+          score.className = 'score';
+          score.textContent = '得分 ' + data.score;
+          const feedback = document.createElement('p');
+          feedback.textContent = data.feedback || '';
+          body.appendChild(score);
+          body.appendChild(feedback);
+        } else {
+          const notice = document.createElement('p');
+          notice.textContent = '⚠️ ' + (data.message || '判题未完成');
+          body.appendChild(notice);
+        }
+        $('review-card').classList.remove('hidden');
+        $('next-btn').classList.remove('hidden');
+      })
+      .catch(() => showBanner('AI 服务不可用,请先启动 Python 服务'));
+  }
+
+  $('start-btn').addEventListener('click', loadQuestion);
+  $('submit-btn').addEventListener('click', submitAnswer);
+  $('next-btn').addEventListener('click', loadQuestion);
+</script>
+</body>
+</html>
