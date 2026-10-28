@@ -1,0 +1,7 @@
+# Gateway configuration: the Spring Boot app on 8080 proxies to the
+# Python FastAPI AI service on 8000 (python -m interview_agent.server).
+python-api:
+  base-url: http://localhost:8000
+
+server:
+  port: 8080
