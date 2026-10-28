@@ -30,11 +30,10 @@ DEFAULT_OUT = "scripts/golden_draft.json"
 
 # Chinese behavior specs shown to the model. The band key itself never
 # appears in the prompt (the model sees behavior, not band names).
-# NOTE: partial deviates from the brief by one word ("新内容" instead of
-# "新要点") -- the brief's own test bans "要点" in the partial prompt, and
-# the executable test wins over the prose spec.
+# NOTE: wording is unified on "内容" -- the executable tests ban "要点"
+# anywhere in the specs/prompts, and tests win over the prose brief.
 BAND_SPECS = {
-    "good": "写一个覆盖该题全部要点的口述答案,自然、像备考者,1~4 句",
+    "good": "写一个覆盖该题全部内容的口述答案,自然、像备考者,1~4 句",
     "partial": "写一个只答对该题约一半内容的口述答案,说对一部分、漏掉其余,不要虚构新内容",
     "bad": "写一个方向错误但认真作答的口述答案(常见误解),不要乱码或拒绝作答",
 }
@@ -46,6 +45,20 @@ def build_generator_prompt(question_text: str, band: str) -> str:
         f"面试题:{question_text}\n"
         f"要求:{BAND_SPECS[band]}。只输出口述答案本身,不要任何解释、前缀或编号。"
     )
+
+
+def parse_ids(s: str) -> list[int]:
+    """Split a comma-separated id string into ints, failing friendly on junk.
+
+    Empty items are skipped (tolerates a trailing comma); any non-numeric
+    item aborts with a Chinese stderr message before a single API call.
+    """
+    parts = [x.strip() for x in s.split(",") if x.strip()]
+    bad = [x for x in parts if not x.isdigit()]
+    if bad:
+        print(f"id 列表含非数字项,请检查: {','.join(bad)}", file=sys.stderr)
+        raise SystemExit(1)
+    return [int(x) for x in parts]
 
 
 def _write_draft(draft: list, out: str) -> None:
@@ -61,7 +74,7 @@ def main(ids: str, out: str = DEFAULT_OUT) -> None:
     Fails fast on unknown ids before any API call; a per-case LLM failure is
     reported and skipped (the run continues, progress is already on disk).
     """
-    question_ids = [int(x) for x in ids.split(",") if x.strip()]
+    question_ids = parse_ids(ids)
     cfg = load_config()
     client = LLMClient(cfg)
     qrepo = QuestionRepo(connect(cfg.db_path))

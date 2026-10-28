@@ -11,3 +11,15 @@ def test_prompt_describes_band_behavior():
     p_good = build_generator_prompt("Q", "good")
     p_bad = build_generator_prompt("Q", "bad")
     assert "全部" in p_good and "错误" in p_bad
+
+def test_good_spec_uses_neirong_not_yaodian():
+    from scripts.generate_golden import BAND_SPECS, build_generator_prompt
+    assert "要点" not in BAND_SPECS["good"]           # wording unified
+    p = build_generator_prompt("Q", "good"); assert "内容" in p
+
+def test_non_numeric_id_friendly_error(capsys):
+    import pytest, sys
+    from scripts import generate_golden as g
+    with pytest.raises(SystemExit):
+        g.parse_ids("1,abc,3")
+    assert "非数字" in capsys.readouterr().err
