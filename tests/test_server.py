@@ -65,7 +65,7 @@ def test_ask_empty_index_message(client_pkg, monkeypatch):    # Review Focus #4
 
 def test_stats_endpoint(client_pkg):
     tc, conn = client_pkg
-    conn.execute("INSERT INTO attempts(question_id,user_answer,score,feedback)"
-                 " VALUES (7,'a',0.5,'f')"); conn.commit()
+    from interview_agent.store.attempts import AttemptRepo
+    AttemptRepo(conn).record(7, "a", 0.5, "f")   # creates wrong_notes via state machine
     assert tc.get("/api/stats", params={"topic": "jvm"}).json() == \
         {"attempts": 1, "avg_score": 0.5, "wrong_count": 1}

@@ -22,9 +22,6 @@ from .store.questions import QuestionRepo
 from .store.vectors import VectorRepo
 from .tools.registry import build_default_registry
 
-# Wrong-answer threshold, mirroring AttemptRepo.record's wrong-notes rule.
-_WRONG_THRESHOLD = 0.6
-
 # run_ask's system prompt has the model end with a "💡 接着练:" line that
 # echoes the recommended question id; run_ask itself returns text only, so
 # the id is recovered from that line for the JSON contract.
@@ -185,18 +182,10 @@ def create_app(cfg, conn) -> FastAPI:
 
     @app.get("/api/stats")
     def stats(topic: str):
-        conn = app.state.conn
-        st = AttemptRepo(conn).stats(topic)
-        # wrong_notes is the CLI's review-priority state machine and is
-        # maintained only through AttemptRepo.record; the stats view counts
-        # wrong ANSWERS from the attempts rows themselves so that every
-        # writer (grade tool, manual SQL seed) is reflected.
-        wrong = conn.execute(
-            "SELECT COUNT(*) FROM attempts a"
-            " JOIN questions q ON q.id=a.question_id"
-            " WHERE q.topic=? AND a.score < ?",
-            (topic, _WRONG_THRESHOLD)).fetchone()[0]
-        return {**st, "wrong_count": wrong}
+        # Delegate to AttemptRepo.stats so the numbers are CLI-identical
+        # (get_stats tool and `python -m interview_agent quiz` print this
+        # same query's results).
+        return AttemptRepo(app.state.conn).stats(topic)
 
     return app
 
