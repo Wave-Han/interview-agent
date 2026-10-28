@@ -69,3 +69,17 @@ def test_stats_endpoint(client_pkg):
     AttemptRepo(conn).record(7, "a", 0.5, "f")   # creates wrong_notes via state machine
     assert tc.get("/api/stats", params={"topic": "jvm"}).json() == \
         {"attempts": 1, "avg_score": 0.5, "wrong_count": 1}
+
+def test_unhandled_exception_returns_500_chinese(client_pkg, monkeypatch):
+    tc, _ = client_pkg
+    def boom(self, topic):                    # a handler that explodes
+        raise RuntimeError("boom")
+    monkeypatch.setattr(
+        "interview_agent.store.attempts.AttemptRepo.stats", boom)
+    # The catch-all handler runs in ServerErrorMiddleware, which re-raises
+    # after sending the response; the default TestClient would surface that
+    # internal re-raise instead of the 500 JSON body we assert on.
+    lax = TestClient(tc.app, raise_server_exceptions=False)
+    r = lax.get("/api/stats", params={"topic": "jvm"})
+    assert r.status_code == 500
+    assert r.json() == {"detail": "服务器内部错误,请查看日志"}

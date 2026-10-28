@@ -1,6 +1,7 @@
 package com.wavehan.agentweb;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -12,9 +13,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
@@ -78,6 +84,48 @@ class AiClientServiceTest {
 
         assertTrue(ex.getMessage().contains("AI 服务不可用"));
         assertNotNull(ex.getCause());
+    }
+
+    @Test
+    void httpErrorSurfacesPythonDetailInsteadOfUnavailable() {
+        RestClient rest = mock(RestClient.class);
+        RestClient.RequestBodyUriSpec spec = mock(RestClient.RequestBodyUriSpec.class);
+        when(rest.post()).thenReturn(spec);
+        when(spec.uri("/api/grade")).thenReturn(spec);
+        when(spec.header(anyString(), anyString())).thenReturn(spec);
+        when(spec.body(anyMap())).thenReturn(spec);
+        // Python's 502 LLM failure carries a crafted Chinese detail that must
+        // reach the page instead of the false "service not started" message.
+        when(spec.retrieve()).thenThrow(HttpServerErrorException.create(
+                HttpStatus.BAD_GATEWAY, "upstream", new HttpHeaders(),
+                "{\"detail\":\"LLM 接口错误(状态码 401)\"}".getBytes(StandardCharsets.UTF_8),
+                StandardCharsets.UTF_8));
+
+        AiServiceUnavailableException ex = assertThrows(AiServiceUnavailableException.class,
+                () -> new AiClientService(rest).grade(7L, "my answer"));
+
+        assertTrue(ex.getMessage().contains("LLM 接口错误"));
+        assertFalse(ex.getMessage().contains("AI 服务不可用"));
+    }
+
+    @Test
+    void httpError404SurfacesQuestionNotFoundDetail() {
+        RestClient rest = mock(RestClient.class);
+        RestClient.RequestBodyUriSpec spec = mock(RestClient.RequestBodyUriSpec.class);
+        when(rest.post()).thenReturn(spec);
+        when(spec.uri("/api/grade")).thenReturn(spec);
+        when(spec.header(anyString(), anyString())).thenReturn(spec);
+        when(spec.body(anyMap())).thenReturn(spec);
+        // Unknown question: Python answers 404 with {"detail": "题目不存在: ..."}.
+        when(spec.retrieve()).thenThrow(HttpClientErrorException.create(
+                HttpStatus.NOT_FOUND, "not found", new HttpHeaders(),
+                "{\"detail\":\"题目不存在: 99\"}".getBytes(StandardCharsets.UTF_8),
+                StandardCharsets.UTF_8));
+
+        AiServiceUnavailableException ex = assertThrows(AiServiceUnavailableException.class,
+                () -> new AiClientService(rest).grade(99L, "my answer"));
+
+        assertTrue(ex.getMessage().contains("题目不存在"));
     }
 
     @Test

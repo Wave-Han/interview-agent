@@ -6,8 +6,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wavehan.agentweb.dto.AskResultDto;
 import com.wavehan.agentweb.dto.GradeResultDto;
 import com.wavehan.agentweb.dto.QuestionDto;
@@ -15,12 +18,17 @@ import com.wavehan.agentweb.dto.StatsDto;
 
 /**
  * Thin HTTP client over the Python FastAPI AI service (four endpoints).
- * Each method maps one endpoint onto its DTO; any failure (service down,
- * timeout, decode error) is translated into {@link AiServiceUnavailableException}
- * so controllers can render a friendly page instead of a stack trace.
+ * Each method maps one endpoint onto its DTO; any failure is translated
+ * into {@link AiServiceUnavailableException} so controllers can render a
+ * friendly page instead of a stack trace. Non-2xx responses are special:
+ * Python already wrote a structured Chinese message into the body (502 LLM
+ * failure, 404 unknown question), so their text is surfaced as-is while
+ * transport-level failures keep the "service not started" wording.
  */
 @Service
 public class AiClientService {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final RestClient rest;
 
@@ -46,7 +54,13 @@ public class AiClientService {
                             topic, wrongOnly, excludeIds)
                     .retrieve()
                     .body(QuestionDto.class);
+        } catch (HttpStatusCodeException e) {
+            // Python returned a structured error (e.g. 502 LLM failure with
+            // Chinese detail). Surface its body/message instead of masking
+            // as "service unavailable".
+            throw new AiServiceUnavailableException(extractMessage(e));
         } catch (Exception e) {
+            // Transport-level failure (connection refused, timeout, decode).
             throw new AiServiceUnavailableException(e);
         }
     }
@@ -62,7 +76,13 @@ public class AiClientService {
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                     .body(body)
                     .retrieve().body(GradeResultDto.class);
+        } catch (HttpStatusCodeException e) {
+            // Python returned a structured error (e.g. 502 LLM failure with
+            // Chinese detail). Surface its body/message instead of masking
+            // as "service unavailable".
+            throw new AiServiceUnavailableException(extractMessage(e));
         } catch (Exception e) {
+            // Transport-level failure (connection refused, timeout, decode).
             throw new AiServiceUnavailableException(e);
         }
     }
@@ -75,7 +95,13 @@ public class AiClientService {
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                     .body(body)
                     .retrieve().body(AskResultDto.class);
+        } catch (HttpStatusCodeException e) {
+            // Python returned a structured error (e.g. 502 LLM failure with
+            // Chinese detail). Surface its body/message instead of masking
+            // as "service unavailable".
+            throw new AiServiceUnavailableException(extractMessage(e));
         } catch (Exception e) {
+            // Transport-level failure (connection refused, timeout, decode).
             throw new AiServiceUnavailableException(e);
         }
     }
@@ -84,7 +110,13 @@ public class AiClientService {
         try {
             return rest.get().uri("/api/stats?topic={topic}", topic)
                     .retrieve().body(StatsDto.class);
+        } catch (HttpStatusCodeException e) {
+            // Python returned a structured error (e.g. 502 LLM failure with
+            // Chinese detail). Surface its body/message instead of masking
+            // as "service unavailable".
+            throw new AiServiceUnavailableException(extractMessage(e));
         } catch (Exception e) {
+            // Transport-level failure (connection refused, timeout, decode).
             throw new AiServiceUnavailableException(e);
         }
     }
@@ -93,5 +125,27 @@ public class AiClientService {
         if (value == null) {
             throw new IllegalArgumentException(name + " must not be null");
         }
+    }
+
+    /**
+     * Recover the user-facing message from a Python error response: FastAPI
+     * writes {@code {"detail": ...}}; the "error" key is accepted as a
+     * fallback. Any non-JSON or empty body degrades to a status-code-only
+     * Chinese message.
+     */
+    private static String extractMessage(HttpStatusCodeException e) {
+        try {
+            JsonNode root = JSON.readTree(e.getResponseBodyAsString());
+            String detail = root.path("detail").asText(null);
+            if (detail == null || detail.isBlank()) {
+                detail = root.path("error").asText(null);
+            }
+            if (detail != null && !detail.isBlank()) {
+                return detail;
+            }
+        } catch (Exception ignored) {
+            // Unparseable body falls through to the generic message below.
+        }
+        return "AI 服务错误(" + e.getStatusCode().value() + ")";
     }
 }

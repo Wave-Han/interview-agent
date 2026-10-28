@@ -116,11 +116,19 @@
         $('answer-card').classList.remove('hidden');
         $('answer').value = '';
         $('next-btn').classList.add('hidden');
+        // New question fetched: re-arm the submit button for this round.
+        $('submit-btn').disabled = false;
       })
       .catch(() => showBanner('AI 服务不可用,请先启动 Python 服务'));
   }
 
   function submitAnswer() {
+    // Double-submit guard: while a grade is in flight (and after it lands)
+    // the button stays disabled, so one answer can never create two
+    // attempts rows; it is re-armed only by the next-question fetch above
+    // or by a failed fetch below (retry path).
+    const btn = $('submit-btn');
+    btn.disabled = true;
     fetch('/web/grade', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -131,6 +139,7 @@
         if (data.error) {
           // Failure keeps the textarea and question card intact for retry.
           showBanner(data.error);
+          btn.disabled = false;
           return;
         }
         hideBanner();
@@ -152,7 +161,10 @@
         $('review-card').classList.remove('hidden');
         $('next-btn').classList.remove('hidden');
       })
-      .catch(() => showBanner('AI 服务不可用,请先启动 Python 服务'));
+      .catch(() => {
+        showBanner('AI 服务不可用,请先启动 Python 服务');
+        btn.disabled = false;
+      });
   }
 
   $('start-btn').addEventListener('click', loadQuestion);

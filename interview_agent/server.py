@@ -3,12 +3,14 @@
 # (same grading path as the CLI: rubric message -> run_agent with forced
 # record_result -> attempt-id guard). Stateless per request; shares the
 # same SQLite database as the CLI.
+import logging
 import os
 import re
 import sqlite3
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .agent.loop import run_agent
@@ -26,6 +28,8 @@ from .tools.registry import build_default_registry
 # echoes the recommended question id; run_ask itself returns text only, so
 # the id is recovered from that line for the JSON contract.
 _RECOMMEND_RE = re.compile(r"接着练[:：][^\d]*(\d+)")
+
+logger = logging.getLogger(__name__)
 
 
 def make_client(cfg):
@@ -106,6 +110,17 @@ def create_app(cfg, conn) -> FastAPI:
     app = FastAPI(lifespan=_lifespan)
     app.state.cfg = cfg
     app.state.conn = conn
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request, exc):
+        # Last-resort handler: an uncaught bug must still come back as JSON
+        # with a Chinese message (the web layer surfaces detail fields),
+        # never as Starlette's HTML "Internal Server Error" page. The
+        # traceback goes to the log for diagnosis.
+        logger.exception("unhandled error on %s %s",
+                         request.method, request.url.path)
+        return JSONResponse(status_code=500,
+                            content={"detail": "服务器内部错误,请查看日志"})
 
     @app.get("/api/question")
     def question(topic: str, wrong_only: bool = False,
