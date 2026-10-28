@@ -1,5 +1,7 @@
 httpx
 python-dotenv
 redis
+fastapi
+uvicorn
 # dev
 pytest
