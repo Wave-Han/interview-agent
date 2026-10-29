@@ -123,10 +123,11 @@
   }
 
   function submitAnswer() {
-    // Double-submit guard: while a grade is in flight (and after it lands)
-    // the button stays disabled, so one answer can never create two
-    // attempts rows; it is re-armed only by the next-question fetch above
-    // or by a failed fetch below (retry path).
+    // Double-submit guard: the button is disabled only WHILE a grade is
+    // in flight (that alone prevents double-click duplicates). After the
+    // grade lands it is re-armed immediately — revising the answer and
+    // re-submitting the SAME question is a valid flow (re-attempt), and
+    // each click is a deliberate user action that may create a new attempt.
     const btn = $('submit-btn');
     btn.disabled = true;
     fetch('/web/grade', {
@@ -160,6 +161,7 @@
         }
         $('review-card').classList.remove('hidden');
         $('next-btn').classList.remove('hidden');
+        btn.disabled = false;
       })
       .catch(() => {
         showBanner('AI 服务不可用,请先启动 Python 服务');
