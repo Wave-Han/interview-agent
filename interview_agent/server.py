@@ -66,6 +66,10 @@ class _RecordOnceRepo:
         return self._inner.stats(topic)
 
 
+# Hard guard feedback for trivially short answers (code-scored, no LLM)
+SHORT_ANSWER_FEEDBACK = "答案过短,未包含有效内容,记 0 分"
+
+
 class GradeRequest(BaseModel):
     question_id: int
     answer: str
@@ -150,6 +154,15 @@ def create_app(cfg, conn) -> FastAPI:
         q = qrepo.get(req.question_id)
         if q is None:
             raise HTTPException(404, f"题目不存在: {req.question_id}")
+        # Hard guard: trivially short answers are scored 0 by CODE, not by
+        # the model — the prompt discipline is probabilistic (the provider
+        # sometimes still grades gibberish generously); this makes 'xxx'
+        # deterministic. Falls through to the LLM path otherwise.
+        stripped = (req.answer or "").strip()
+        if len(stripped) <= 4:
+            arepo.record(req.question_id, stripped, 0.0, SHORT_ANSWER_FEEDBACK)
+            return {"score": 0.0, "feedback": SHORT_ANSWER_FEEDBACK,
+                    "recorded": True}
         prev = arepo.max_attempt_id(req.question_id) or 0
         # Per-request local message list: the HTTP service keeps no session
         # history across requests (unlike the CLI driver).

@@ -30,7 +30,7 @@ def test_question_endpoint_with_exclude(client_pkg):
 
 def test_grade_records_and_returns(client_pkg):
     tc, conn = client_pkg
-    r = tc.post("/api/grade", json={"question_id": 7, "answer": "我的回答"})
+    r = tc.post("/api/grade", json={"question_id": 7, "answer": "这是我对该问题的完整回答"})
     body = r.json()
     assert body["recorded"] is True and body["score"] == 0.8
     assert conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 1
@@ -43,7 +43,7 @@ def test_grade_skipped_tool_semantics(client_pkg, monkeypatch):
             from interview_agent.llm.client import LLMResponse
             return LLMResponse("直接点评", [], "stop")
     monkeypatch.setattr("interview_agent.server.make_client", Plain)
-    r = tc.post("/api/grade", json={"question_id": 7, "answer": "x"})
+    r = tc.post("/api/grade", json={"question_id": 7, "answer": "一段足够长的跳过工具路径测试答案"})
     assert r.json() == {"recorded": False,
                         "message": "判题未完成(模型未调用判分工具)"}  # Review Focus #1
     assert conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 0

@@ -78,6 +78,14 @@ class SessionDriver:
 
     def grade(self, user_answer: str) -> None:
         q = self.qrepo.get(self.current["question_id"])
+        # Hard guard mirroring the HTTP service: trivially short answers are
+        # code-scored 0 (the provider's prompt discipline is probabilistic).
+        stripped = (user_answer or "").strip()
+        if len(stripped) <= 4:
+            self.arepo.record(q.id, stripped, 0.0,
+                              "答案过短,未包含有效内容,记 0 分")
+            print("\n📊 点评:答案过短,未包含有效内容,记 0 分")
+            return
         rubric_msg = build_rubric_message(q, user_answer)
         # Snapshot the latest attempt id BEFORE grading: if the model still
         # skips record_result (a provider may ignore tool_choice), the
