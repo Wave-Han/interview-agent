@@ -114,9 +114,7 @@
         $('question-text').textContent = data.question;
         if (data.topic !== $('topic').value) {
           $('question-text').textContent +=
-            '
-📌 错题优先:这是你的未掌握错题(主题 ' + data.topic +
-            '),错题复习优先于所选主题的新题';
+            '【错题优先:这是你未掌握的错题,原主题 ' + data.topic + '】';
         }
         $('question-card').classList.remove('hidden');
         $('answer-card').classList.remove('hidden');
