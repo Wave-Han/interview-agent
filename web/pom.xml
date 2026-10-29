@@ -45,6 +45,12 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <!-- Windows JVM defaults file.encoding to GBK; the RestClient then
+               sends Chinese request bodies as GBK bytes and FastAPI fails
+               parsing them as UTF-8 (422). Force UTF-8 for the forked app. -->
+          <jvmArguments>-Dfile.encoding=UTF-8</jvmArguments>
+        </configuration>
       </plugin>
     </plugins>
   </build>

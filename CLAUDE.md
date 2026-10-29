@@ -41,6 +41,7 @@ python -m interview_agent eval                          # 黄金集 eval:60 案�
 - **向量 float32 LE BLOB,零 numpy**(struct.pack/unpack 序列化);**改题后必须重跑 `index`**,否则检索命中的是旧向量。
 - 注释英文;面向用户的输出中文。
 - 依赖白名单:httpx、python-dotenv、redis(可选运行时,未装/未配置自动降级 SQLite)、fastapi、uvicorn、pytest(dev)。禁止引入 LLM 官方 SDK / LangChain / numpy。
+- Java→Python HTTP 调用必须强制 HTTP/1.1 且 JVM UTF-8(AiClientService 构造器 + pom jvmArguments):JDK HttpClient 默认 h2c upgrade 会让 uvicorn body 解析炸 422;Windows JVM 默认 GBK 会把中文 body 发成 GBK 字节。
 - 用户答案一律用 `=== USER ANSWER START/END ===` 定界 + prompt 声明 untrusted(防注入操纵判分)。
 - 选题策略:未掌握错题全局优先(刻意设计)、本会话已问排除(exclude_ids,"稍后再见"非"立刻重考")。
 

@@ -34,7 +34,16 @@ public class AiClientService {
 
     @Autowired
     public AiClientService(@Value("${python-api.base-url}") String baseUrl) {
-        this(RestClient.builder().baseUrl(baseUrl).build());
+        // Force HTTP/1.1: the default JDK HttpClient attempts an h2c upgrade,
+        // which uvicorn rejects — the request body then arrives corrupted and
+        // FastAPI fails parsing it ("There was an error parsing the body", 422).
+        java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                .build();
+        this.rest = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory(httpClient))
+                .build();
     }
 
     /** Direct-injection constructor so unit tests can pass a mocked RestClient. */
