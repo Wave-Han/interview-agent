@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * for the question fields.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 public record QuestionDto(
         @JsonProperty("question_id") Long questionId,
         String topic,
