@@ -73,6 +73,7 @@ public class WebController {
             if (dto.recorded()) {
                 payload.put("score", dto.score());
                 payload.put("feedback", dto.feedback());
+                payload.put("reference", dto.reference());
             } else {
                 payload.put("message", dto.message());
             }
