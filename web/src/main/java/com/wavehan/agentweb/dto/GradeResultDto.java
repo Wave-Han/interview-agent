@@ -12,5 +12,6 @@ public record GradeResultDto(
         Double score,
         String feedback,
         @JsonProperty("recorded") boolean recorded,
-        String message) {
+        String message,
+        java.util.List<String> reference) {
 }

@@ -53,7 +53,7 @@ class AiClientServiceTest {
         // to the more specific body(StreamingHttpOutputMessage.Body) and miss.
         when(spec.body(anyMap())).thenReturn(spec);
         when(spec.retrieve()).thenReturn(response);
-        GradeResultDto expected = new GradeResultDto(0.8, "好", true, null);
+        GradeResultDto expected = new GradeResultDto(0.8, "好", true, null, null);
         when(response.body(GradeResultDto.class)).thenReturn(expected);
 
         GradeResultDto actual = new AiClientService(rest).grade(7L, "my answer");

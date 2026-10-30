@@ -162,7 +162,7 @@ def create_app(cfg, conn) -> FastAPI:
         if len(stripped) <= 4:
             arepo.record(req.question_id, stripped, 0.0, SHORT_ANSWER_FEEDBACK)
             return {"score": 0.0, "feedback": SHORT_ANSWER_FEEDBACK,
-                    "recorded": True}
+                    "recorded": True, "reference": q.answer_points}
         prev = arepo.max_attempt_id(req.question_id) or 0
         # Per-request local message list: the HTTP service keeps no session
         # history across requests (unlike the CLI driver).
@@ -182,10 +182,13 @@ def create_app(cfg, conn) -> FastAPI:
         if new_max <= prev:
             return {"recorded": False,
                     "message": "判题未完成(模型未调用判分工具)"}
+        # Reference points travel with the grade result: after grading the
+        # rubric stops being a secret and becomes study material.
+        reference = q.answer_points
         score = conn.execute("SELECT score FROM attempts WHERE id=?",
                              (new_max,)).fetchone()[0]
         return {"score": score, "feedback": arepo.latest_feedback(req.question_id),
-                "recorded": True}
+                "recorded": True, "reference": reference}
 
     @app.post("/api/ask")
     def ask(req: AskRequest):

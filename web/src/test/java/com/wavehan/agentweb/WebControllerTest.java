@@ -38,7 +38,7 @@ class WebControllerTest {
 
     @Test
     void gradeDelegates() throws Exception {
-        when(aiClient.grade(7L, "a")).thenReturn(new GradeResultDto(0.8, "好", true, null));
+        when(aiClient.grade(7L, "a")).thenReturn(new GradeResultDto(0.8, "好", true, null, null));
 
         mockMvc.perform(post("/web/grade")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -55,7 +55,7 @@ class WebControllerTest {
     void gradeSkippedSemantics() throws Exception {
         // Mirrors the real Python message when the model skips the grading tool.
         when(aiClient.grade(9L, "skip")).thenReturn(
-                new GradeResultDto(null, null, false, "判题未完成(模型未调用判分工具)"));
+                new GradeResultDto(null, null, false, "判题未完成(模型未调用判分工具)", null));
 
         mockMvc.perform(post("/web/grade")
                 .contentType(MediaType.APPLICATION_JSON)

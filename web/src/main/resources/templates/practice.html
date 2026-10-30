@@ -158,6 +158,19 @@
           feedback.textContent = data.feedback || '';
           body.appendChild(score);
           body.appendChild(feedback);
+          if (data.reference && data.reference.length) {
+            const head = document.createElement('p');
+            head.className = 'ref-head';
+            head.textContent = '【参考要点】';
+            const ul = document.createElement('ul');
+            data.reference.forEach(function (pt) {
+              const li = document.createElement('li');
+              li.textContent = pt;
+              ul.appendChild(li);
+            });
+            body.appendChild(head);
+            body.appendChild(ul);
+          }
         } else {
           const notice = document.createElement('p');
           notice.textContent = '⚠️ ' + (data.message || '判题未完成');

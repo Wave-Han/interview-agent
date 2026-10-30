@@ -109,3 +109,6 @@ class SessionDriver:
         fb = self.arepo.latest_feedback(q.id)
         if fb:
             print(f"\n📊 点评:{fb}")
+        print("📖 参考要点:")
+        for pt in q.answer_points:
+            print(f"  - {pt}")
