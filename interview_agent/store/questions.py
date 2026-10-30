@@ -40,11 +40,12 @@ class QuestionRepo:
 
     def pick(self, topic: str, wrong_only: bool = False,
              exclude_ids: list[int] | None = None) -> Question | None:
-        """Priority: unmastered wrong notes (oldest last_wrong_at first),
-        then least-recently-attempted questions of the topic.
-        exclude_ids are questions already asked this session; they are skipped
-        when alternatives exist and ignored when everything else is excluded
-        (so a wrong question resurfaces later, not immediately)."""
+        """Priority: same-topic unmastered wrong notes (oldest first), then
+        same-topic least-recently-attempted questions; only when the topic
+        pool is exhausted does it cross into OTHER topics' wrong notes, then
+        other topics' questions. exclude_ids are questions already asked
+        this session; skipped when alternatives exist, ignored when
+        everything else is excluded (a wrong question resurfaces later)."""
         exclude_ids = exclude_ids or []
 
         def _not_in() -> tuple[str, list]:
@@ -53,13 +54,14 @@ class QuestionRepo:
             marks = ",".join("?" * len(exclude_ids))
             return f" AND q.id NOT IN ({marks})", list(exclude_ids)
 
-        def _wrong_first():
+        def _wrong_first(topic_filter: bool):
             extra, params = _not_in()
+            where, bind = (" AND q.topic = ?", [topic]) if topic_filter else ("", [])
             row = self.conn.execute(
                 "SELECT q.id FROM questions q"
                 " JOIN wrong_notes w ON w.question_id = q.id"
-                f" WHERE w.mastered = 0{extra}"
-                " ORDER BY w.last_wrong_at ASC LIMIT 1", params).fetchone()
+                f" WHERE w.mastered = 0{where}{extra}"
+                " ORDER BY w.last_wrong_at ASC LIMIT 1", bind + params).fetchone()
             return self.get(row[0]) if row else None
 
         def _topic_order():
@@ -72,14 +74,31 @@ class QuestionRepo:
                 " LIMIT 1", [topic] + params).fetchone()
             return self.get(row[0]) if row else None
 
-        q = _wrong_first()
+        def _cross_topic():
+            extra, params = _not_in()
+            row = self.conn.execute(
+                "SELECT q.id FROM questions q"
+                " LEFT JOIN attempts a ON a.question_id = q.id"
+                f" WHERE q.topic != ?{extra} GROUP BY q.id"
+                " ORDER BY MAX(a.created_at) IS NULL DESC, MAX(a.created_at) ASC"
+                " LIMIT 1", [topic] + params).fetchone()
+            return self.get(row[0]) if row else None
+
+        # Same topic first: its wrong notes, then its questions.
+        q = _wrong_first(topic_filter=True)
         if q is None and not wrong_only:
             q = _topic_order()
+        # Topic exhausted (or wrong_only exhausted in-topic): cross topics —
+        # other topics' wrong notes first, then other topics' questions.
+        if q is None:
+            q = _wrong_first(topic_filter=False)
+            if q is None and not wrong_only:
+                q = _cross_topic()
         if q is None and exclude_ids and not wrong_only:
             # everything excluded: retry once ignoring the exclusion
             # (wrong_only never relaxes — a just-asked wrong note waits)
             exclude_ids = []
-            q = _wrong_first()
+            q = _wrong_first(topic_filter=True)
             if q is None:
                 q = _topic_order()
         return q
